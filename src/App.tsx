@@ -815,7 +815,7 @@ export default function App() {
 
       {/* Custom Deletion Confirmation Dialog */}
       {missionToDelete && (
-        <div className="fixed inset-0 bg-purple-950/60 backdrop-blur-xs flex items-center justify-center p-4 z-55" id="delete-confirmation-dialog">
+        <div className="fixed inset-0 bg-purple-950/60 backdrop-blur-xs flex items-center justify-center p-4 z-[100]" id="delete-confirmation-dialog">
           <div className="bg-white rounded-2xl border border-red-200 shadow-2xl w-full max-w-sm overflow-hidden flex flex-col p-6 space-y-4">
             <div className="flex items-start gap-4">
               <div className="p-3 rounded-2xl bg-red-50 text-red-650 shrink-0 border border-red-100 flex items-center justify-center">
