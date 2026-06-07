@@ -1,0 +1,25 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Global Safety Net (default-deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+    
+    // Helper check for signed in owner
+    function isOwner(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+
+    // Direct sandboxed user path for missions
+    match /users/{userId}/missions/{document=**} {
+      allow read, write: if isOwner(userId);
+    }
+    
+    // Direct sandboxed user path for catholic events
+    match /users/{userId}/catholicEvents/{document=**} {
+      allow read, write: if isOwner(userId);
+    }
+  }
+}
