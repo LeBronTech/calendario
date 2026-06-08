@@ -346,15 +346,25 @@ export default function CatholicEventsCalendar({
   const [touchEnd, setTouchEnd] = useState<number | null>(null);
   const [touchStartY, setTouchStartY] = useState<number | null>(null);
   const [touchEndY, setTouchEndY] = useState<number | null>(null);
+  const [direction, setDirection] = useState(0);
 
   const handlePrevMonth = () => {
+    setDirection(-1);
     setCurrentDate(new Date(year, month - 1, 1));
   };
   const handleNextMonth = () => {
+    setDirection(1);
     setCurrentDate(new Date(year, month + 1, 1));
   };
   const handleToday = () => {
-    setCurrentDate(new Date(2026, 5, 6)); // June 6 2026
+    setDirection(0);
+    const today = new Date();
+    setCurrentDate(new Date(today.getFullYear(), today.getMonth(), 1));
+  };
+
+  const isToday = (day: number) => {
+    const today = new Date();
+    return today.getFullYear() === year && today.getMonth() === month && today.getDate() === day;
   };
 
   const handleTouchStart = (e: React.TouchEvent) => {
@@ -906,67 +916,105 @@ export default function CatholicEventsCalendar({
           </div>
 
           {/* Monthly grid */}
-          <div className="grid grid-cols-7 gap-1.5">
-            {dayCells.map((day, idx) => {
-              if (day === null) {
-                return (
-                  <div
-                    key={`empty-win-${idx}`}
-                    className="aspect-square bg-rose-50/10 rounded-lg border border-transparent"
-                  />
-                );
-              }
+          <div className="overflow-hidden relative">
+            <AnimatePresence initial={false} custom={direction} mode="wait">
+              <motion.div
+                key={`${year}-${month}`}
+                custom={direction}
+                variants={{
+                  enter: (dir: number) => ({
+                    x: dir * 40,
+                    opacity: 0
+                  }),
+                  center: {
+                    x: 0,
+                    opacity: 1
+                  },
+                  exit: (dir: number) => ({
+                    x: dir * -40,
+                    opacity: 0
+                  })
+                }}
+                initial="enter"
+                animate="center"
+                exit="exit"
+                transition={{
+                  x: { type: 'spring', stiffness: 350, damping: 28 },
+                  opacity: { duration: 0.12 }
+                }}
+                className="grid grid-cols-7 gap-1.5"
+              >
+                {dayCells.map((day, idx) => {
+                  if (day === null) {
+                    return (
+                      <div
+                        key={`empty-win-${idx}`}
+                        className="aspect-square bg-rose-50/10 rounded-lg border border-transparent"
+                      />
+                    );
+                  }
 
-              const dateStr = formatDateString(day);
-              const dayEvents = catholicEvents.filter((e) => isEventOnDate(e, dateStr));
-              const isSelected = selectedDay === dateStr && showOnlySelectedDay;
+                  const dateStr = formatDateString(day);
+                  const dayEvents = catholicEvents.filter((e) => isEventOnDate(e, dateStr));
+                  const isSelected = selectedDay === dateStr && showOnlySelectedDay;
+                  const dayIsToday = isToday(day);
 
-              return (
-                <div
-                  key={`day-win-${day}`}
-                  onClick={() => {
-                    setSelectedDay(dateStr);
-                    setShowOnlySelectedDay(true);
-                    setTimeout(() => {
-                      const target = document.getElementById('filtered-events-section');
-                      if (target) {
-                        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                      }
-                    }, 80);
-                  }}
-                  className={`aspect-square p-1 flex flex-col justify-between rounded-xl border transition cursor-pointer relative ${
-                    isSelected
-                      ? 'bg-rose-950 text-white border-rose-950 shadow-md ring-2 ring-rose-200 ring-offset-1'
-                      : 'bg-white hover:bg-rose-50/40 border-rose-100'
-                  }`}
-                >
-                  <div className="flex justify-between items-center">
-                    <span className={`text-[11px] font-black ${isSelected ? 'text-white' : 'text-rose-950'}`}>
-                      {day}
-                    </span>
-                  </div>
+                  return (
+                    <div
+                      key={`day-win-${day}`}
+                      onClick={() => {
+                        setSelectedDay(dateStr);
+                        setShowOnlySelectedDay(true);
+                        setTimeout(() => {
+                          const target = document.getElementById('filtered-events-section');
+                          if (target) {
+                            target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                          }
+                        }, 80);
+                      }}
+                      className={`aspect-square p-1 flex flex-col justify-between rounded-xl border transition cursor-pointer relative ${
+                        isSelected
+                          ? 'bg-rose-955 text-white border-rose-955 shadow-md ring-2 ring-rose-200 ring-offset-1'
+                          : dayIsToday
+                          ? 'bg-rose-50/80 border-rose-400 ring-2 ring-rose-150 ring-offset-1 text-rose-950'
+                          : 'bg-white hover:bg-rose-50/40 border-rose-100'
+                      }`}
+                    >
+                      <div className="flex justify-between items-center">
+                        <span className={`text-[11px] font-black flex items-center justify-center rounded-full ${
+                          isSelected 
+                            ? 'text-white' 
+                            : dayIsToday 
+                            ? 'bg-rose-600 text-white w-5 h-5 text-[10px] shadow shadow-rose-600/30' 
+                            : 'text-rose-950'
+                        }`}>
+                          {day}
+                        </span>
+                      </div>
 
-                  {/* Indicator for Events count */}
-                  <div className="flex justify-center flex-wrap gap-0.5 max-h-4 overflow-hidden pt-1">
-                    {dayEvents.slice(0, 3).map((e, eidx) => {
-                      const style = getMovementStyle(e.movement);
-                      return (
-                        <span
-                          key={e.id}
-                          className={`w-[5px] h-[5px] rounded-full shrink-0 ${
-                            isSelected ? 'bg-rose-300' : style?.colorClass || 'bg-rose-400'
-                          }`}
-                          title={e.title}
-                        />
-                      );
-                    })}
-                    {dayEvents.length > 3 && (
-                      <span className="text-[7px] font-extrabold text-rose-500 leading-none">+</span>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+                      {/* Indicator for Events count */}
+                      <div className="flex justify-center flex-wrap gap-0.5 max-h-4 overflow-hidden pt-1">
+                        {dayEvents.slice(0, 3).map((e, eidx) => {
+                          const style = getMovementStyle(e.movement);
+                          return (
+                            <span
+                              key={e.id}
+                              className={`w-[5px] h-[5px] rounded-full shrink-0 ${
+                                isSelected ? 'bg-rose-300' : style?.colorClass || 'bg-rose-400'
+                              }`}
+                              title={e.title}
+                            />
+                          );
+                        })}
+                        {dayEvents.length > 3 && (
+                          <span className="text-[7px] font-extrabold text-rose-500 leading-none">+</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </motion.div>
+            </AnimatePresence>
           </div>
 
           <div className="flex items-center justify-between pt-1">
