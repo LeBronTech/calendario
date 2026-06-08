@@ -29,7 +29,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Mission, CatholicMovement } from '../types';
 import { getMovementStyle } from '../utils/catholicData';
 import { SEEDED_CATHOLIC_EVENTS, CatholicEvent } from '../utils/seededCatholicEvents';
-import { downloadCatholicEvents, uploadCatholicEvent } from '../utils/firebaseDb';
+import { downloadCatholicEvents, uploadCatholicEvent, removeCatholicEvent } from '../utils/firebaseDb';
 import { User } from 'firebase/auth';
 
 interface CatholicEventsCalendarProps {
@@ -146,6 +146,9 @@ export default function CatholicEventsCalendar({
   const [activeSlideIndex, setActiveSlideIndex] = useState(0);
   const [selectedDetailEvent, setSelectedDetailEvent] = useState<CatholicEvent | null>(null);
 
+  // Editing state
+  const [editingEvent, setEditingEvent] = useState<CatholicEvent | null>(null);
+
   // Conflict management states (In-app visual prompt modal)
   const [showConflictModal, setShowConflictModal] = useState(false);
   const [pendingAddEvent, setPendingAddEvent] = useState<CatholicEvent | null>(null);
@@ -156,13 +159,17 @@ export default function CatholicEventsCalendar({
     const localDb = localStorage.getItem('catholic_events_db_maria');
     if (localDb) {
       try {
-        setCatholicEvents(JSON.parse(localDb));
+        const parsed = JSON.parse(localDb) as CatholicEvent[];
+        // Filter out any cached fictitious events, keeping only user manual ones
+        const filtered = parsed.filter(e => e.id.startsWith('cat-manual-'));
+        setCatholicEvents(filtered);
+        localStorage.setItem('catholic_events_db_maria', JSON.stringify(filtered));
       } catch (e) {
-        setCatholicEvents(SEEDED_CATHOLIC_EVENTS);
+        setCatholicEvents([]);
       }
     } else {
-      setCatholicEvents(SEEDED_CATHOLIC_EVENTS);
-      localStorage.setItem('catholic_events_db_maria', JSON.stringify(SEEDED_CATHOLIC_EVENTS));
+      setCatholicEvents([]);
+      localStorage.setItem('catholic_events_db_maria', JSON.stringify([]));
     }
   }, []);
 
@@ -171,15 +178,17 @@ export default function CatholicEventsCalendar({
     if (currentUser) {
       addLog('Sincronizando calendário geral de eventos com a nuvem...');
       downloadCatholicEvents(currentUser.uid).then(async (cloudEvents) => {
-        if (cloudEvents.length === 0) {
+        const filteredCloud = cloudEvents.filter(e => e.id.startsWith('cat-manual-'));
+        if (filteredCloud.length === 0) {
           // Cloud empty, let's backup
-          for (const ev of catholicEvents) {
+          const filteredLocal = catholicEvents.filter(e => e.id.startsWith('cat-manual-'));
+          for (const ev of filteredLocal) {
             await uploadCatholicEvent(currentUser.uid, ev);
           }
           addLog('Eventos locais sincronizados e salvos na nuvem!');
         } else {
-          setCatholicEvents(cloudEvents);
-          localStorage.setItem('catholic_events_db_maria', JSON.stringify(cloudEvents));
+          setCatholicEvents(filteredCloud);
+          localStorage.setItem('catholic_events_db_maria', JSON.stringify(filteredCloud));
           addLog('Catálogo de eventos atualizado da nuvem!');
         }
       }).catch((err) => {
@@ -194,34 +203,48 @@ export default function CatholicEventsCalendar({
     localStorage.setItem('catholic_events_db_maria', JSON.stringify(eventsList));
   };
 
-  const handleCreateCatholicEvent = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!formTitle) return;
-
-    const newEvent: CatholicEvent = {
-      id: 'cat-manual-' + Date.now(),
-      title: formTitle,
-      movement: formMovement,
-      dateStr: formIsFutureUnconfirmed ? '' : formDate,
-      endDateStr: (formIsFutureUnconfirmed || !formEndDate) ? undefined : formEndDate,
-      startTime: formStartTime,
-      endTime: formEndTime,
-      location: formLocation || 'Igreja',
-      description: formDescription || 'Nenhuma descrição adicionada.',
-      tipo: formTipo,
-      city: formCity || 'Geral',
-      instagramUrl: formInstagramUrl.trim() || undefined,
-      instagramImgUrl: formInstagramImgUrl.trim() || undefined
-    };
-
-    const updatedList = [newEvent, ...catholicEvents];
-    saveEventsToStorage(updatedList);
-    if (currentUser) {
-      uploadCatholicEvent(currentUser.uid, newEvent).catch(console.error);
-    }
-    addLog(`Novo evento católico catalogado: ${newEvent.title}`);
+  const handleEditEventClick = (event: CatholicEvent) => {
+    setEditingEvent(event);
+    setFormTitle(event.title);
+    setFormMovement(event.movement);
+    setFormDate(event.dateStr || '2026-06-06');
+    setFormEndDate(event.endDateStr || '');
+    setFormStartTime(event.startTime);
+    setFormEndTime(event.endTime);
+    setFormLocation(event.location);
+    setFormCity(event.city);
+    setFormDescription(event.description);
+    setFormTipo(event.tipo);
+    setFormInstagramUrl(event.instagramUrl || '');
+    setFormInstagramImgUrl(event.instagramImgUrl || '');
+    setFormIsFutureUnconfirmed(!event.dateStr);
+    setIsAddFormOpen(true);
     
-    // Reset Form
+    // Smooth scroll up to the form
+    setTimeout(() => {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }, 100);
+  };
+
+  const handleDeleteCatholicEvent = (eventId: string, title: string) => {
+    const confirmDelete = window.confirm(`Deseja realmente excluir o evento "${title}" do catálogo de eventos católicos?`);
+    if (!confirmDelete) return;
+
+    const updatedList = catholicEvents.filter((ev) => ev.id !== eventId);
+    saveEventsToStorage(updatedList);
+
+    if (currentUser) {
+      removeCatholicEvent(currentUser.uid, eventId).catch(console.error);
+    }
+    addLog(`Evento católico excluído: ${title}`);
+    
+    // If the deleted event is selected in details, close details
+    if (selectedDetailEvent?.id === eventId) {
+      setSelectedDetailEvent(null);
+    }
+  };
+
+  const resetForm = () => {
     setFormTitle('');
     setFormEndDate('');
     setFormLocation('');
@@ -230,7 +253,65 @@ export default function CatholicEventsCalendar({
     setFormInstagramUrl('');
     setFormInstagramImgUrl('');
     setFormIsFutureUnconfirmed(false);
+    setFormStartTime('19:00');
+    setFormEndTime('21:05');
+    setEditingEvent(null);
     setIsAddFormOpen(false);
+  };
+
+  const handleCreateCatholicEvent = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formTitle) return;
+
+    if (editingEvent) {
+      const updatedEvent: CatholicEvent = {
+        ...editingEvent,
+        title: formTitle,
+        movement: formMovement,
+        dateStr: formIsFutureUnconfirmed ? '' : formDate,
+        endDateStr: (formIsFutureUnconfirmed || !formEndDate) ? undefined : formEndDate,
+        startTime: formStartTime,
+        endTime: formEndTime,
+        location: formLocation || 'Igreja',
+        description: formDescription || 'Nenhuma descrição adicionada.',
+        tipo: formTipo,
+        city: formCity || 'Geral',
+        instagramUrl: formInstagramUrl.trim() || undefined,
+        instagramImgUrl: formInstagramImgUrl.trim() || undefined
+      };
+
+      const updatedList = catholicEvents.map((ev) => ev.id === editingEvent.id ? updatedEvent : ev);
+      saveEventsToStorage(updatedList);
+      if (currentUser) {
+        uploadCatholicEvent(currentUser.uid, updatedEvent).catch(console.error);
+      }
+      addLog(`Evento católico atualizado: ${updatedEvent.title}`);
+    } else {
+      const newEvent: CatholicEvent = {
+        id: 'cat-manual-' + Date.now(),
+        title: formTitle,
+        movement: formMovement,
+        dateStr: formIsFutureUnconfirmed ? '' : formDate,
+        endDateStr: (formIsFutureUnconfirmed || !formEndDate) ? undefined : formEndDate,
+        startTime: formStartTime,
+        endTime: formEndTime,
+        location: formLocation || 'Igreja',
+        description: formDescription || 'Nenhuma descrição adicionada.',
+        tipo: formTipo,
+        city: formCity || 'Geral',
+        instagramUrl: formInstagramUrl.trim() || undefined,
+        instagramImgUrl: formInstagramImgUrl.trim() || undefined
+      };
+
+      const updatedList = [newEvent, ...catholicEvents];
+      saveEventsToStorage(updatedList);
+      if (currentUser) {
+        uploadCatholicEvent(currentUser.uid, newEvent).catch(console.error);
+      }
+      addLog(`Novo evento católico catalogado: ${newEvent.title}`);
+    }
+
+    resetForm();
   };
 
   // Check if a catholic event is already in our personal missions list
@@ -493,7 +574,7 @@ export default function CatholicEventsCalendar({
               <div className="flex items-center gap-2 pb-2 border-b border-rose-200">
                 <Sparkles className="w-4.5 h-4.5 text-rose-700" />
                 <h3 className="font-extrabold text-xs text-rose-900 uppercase">
-                  Registar no Eventos Católicos
+                  {editingEvent ? 'Editar Evento Católico' : 'Registar no Eventos Católicos'}
                 </h3>
               </div>
 
@@ -682,7 +763,7 @@ export default function CatholicEventsCalendar({
               <div className="flex justify-end gap-2">
                 <button
                   type="button"
-                  onClick={() => setIsAddFormOpen(false)}
+                  onClick={resetForm}
                   className="px-4 py-1.5 rounded-xl border border-rose-200 hover:bg-rose-100/50 text-xs text-rose-800 font-bold transition"
                 >
                   Cancelar
@@ -691,7 +772,7 @@ export default function CatholicEventsCalendar({
                   type="submit"
                   className="px-4 py-1.5 bg-rose-800 hover:bg-rose-700 text-white font-extrabold text-xs rounded-xl shadow-xs transition"
                 >
-                  ✔️ Gravar nos Eventos Católicos
+                  {editingEvent ? '✔️ Salvar Alterações' : '✔️ Gravar nos Eventos Católicos'}
                 </button>
               </div>
             </form>
@@ -1221,8 +1302,32 @@ export default function CatholicEventsCalendar({
                         )}
                       </div>
 
-                      {/* Right: Checkbox Attendance Switch (Sync with personal agenda) */}
-                      <div className="shrink-0 w-full md:w-auto flex justify-end">
+                      {/* Right: Actions Row containing Edit, Delete, and Attendance buttons */}
+                      <div className="shrink-0 w-full md:w-auto flex flex-col sm:flex-row gap-2 items-stretch sm:items-center justify-end">
+                        {/* Edit and Delete Buttons */}
+                        <div className="flex gap-1.5 w-full sm:w-auto">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleEditEventClick(event);
+                            }}
+                            className="flex-1 sm:flex-initial px-3 py-2 bg-yellow-50 hover:bg-yellow-100 text-yellow-850 border border-yellow-250 rounded-xl text-xs font-black transition active:scale-95 flex items-center justify-center gap-1 cursor-pointer"
+                            title="Editar Evento"
+                          >
+                            ✏️ <span className="sm:hidden lg:inline">Editar</span>
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteCatholicEvent(event.id, event.title);
+                            }}
+                            className="flex-1 sm:flex-initial px-3 py-2 bg-red-50 hover:bg-red-100 text-red-750 border border-red-200 rounded-xl text-xs font-black transition active:scale-95 flex items-center justify-center gap-1 cursor-pointer"
+                            title="Excluir Evento"
+                          >
+                            🗑️ <span className="sm:hidden lg:inline">Excluir</span>
+                          </button>
+                        </div>
+
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
@@ -1430,14 +1535,35 @@ export default function CatholicEventsCalendar({
               </div>
 
               {/* Footer Actions */}
-              <div className="bg-rose-50/60 px-5 py-4 border-t border-rose-100 flex gap-2 justify-between items-center sm:gap-4 shrink-0 font-sans">
-                <button
-                  type="button"
-                  onClick={() => setSelectedDetailEvent(null)}
-                  className="px-4 py-2 border border-rose-300 rounded-xl text-xs font-black text-rose-800 hover:bg-rose-100 transition cursor-pointer"
-                >
-                  Fechar Detalhes
-                </button>
+              <div className="bg-rose-50/60 px-5 py-4 border-t border-rose-100 flex flex-col sm:flex-row gap-3 justify-between items-stretch sm:items-center shrink-0 font-sans font-black">
+                <div className="flex gap-1.5 justify-start">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedDetailEvent(null)}
+                    className="px-4 py-2 border border-rose-300 rounded-xl text-xs text-rose-800 hover:bg-rose-100 transition cursor-pointer"
+                  >
+                    Fechar Detalhes
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedDetailEvent(null);
+                      handleEditEventClick(event);
+                    }}
+                    className="px-3.5 py-2 bg-yellow-50 hover:bg-yellow-100 text-yellow-850 border border-yellow-250 rounded-xl text-xs transition cursor-pointer flex items-center gap-1"
+                  >
+                    ✏️ Editar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleDeleteCatholicEvent(event.id, event.title);
+                    }}
+                    className="px-3.5 py-2 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-xl text-xs transition cursor-pointer flex items-center gap-1"
+                  >
+                    🗑️ Excluir
+                  </button>
+                </div>
                 <button
                   type="button"
                   onClick={() => {
@@ -1447,7 +1573,7 @@ export default function CatholicEventsCalendar({
                       setSelectedDetailEvent(null);
                     }, 400);
                   }}
-                  className={`px-5 py-2.5 rounded-xl font-extrabold text-xs shadow-md transition cursor-pointer flex items-center gap-1.5 ${
+                  className={`px-5 py-2.5 rounded-xl font-extrabold text-xs shadow-md transition cursor-pointer flex items-center justify-center gap-1.5 ${
                     isAttending
                       ? 'bg-rose-200 border border-rose-300 text-rose-900 hover:bg-rose-300'
                       : 'bg-rose-450 hover:bg-rose-500 text-white'

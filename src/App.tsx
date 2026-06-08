@@ -677,21 +677,13 @@ export default function App() {
             </div>
             <div>
               <h1 id="app-title-header" className="text-lg font-black tracking-tighter text-slate-900 flex items-center gap-1.5 uppercase">
-                Eu Missionário
+                Eu Agenda Missionária
               </h1>
-              <p className="text-xs text-purple-700 font-extrabold tracking-tight uppercase">Agenda LeBron</p>
+              <p className="text-xs text-purple-700 font-extrabold tracking-tight uppercase">Eu Missionário</p>
             </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto justify-end">
-            {/* Quick scheduling button */}
-            <button
-              onClick={() => handleAddMission({ dateStr: '2026-06-06' })}
-              className="bg-purple-700 hover:bg-purple-600 text-white font-extrabold py-2 px-4 rounded-xl text-xs flex items-center gap-1.5 shadow-md transition hover:scale-102 active:scale-95 cursor-pointer"
-            >
-              <Plus className="w-4 h-4" /> Registrar Missão
-            </button>
-
             {/* Google Sync and Login button widgets */}
             {user ? (
               <div className="flex items-center bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-xl p-1.5 pr-3 text-xs gap-2 transition max-w-sm">
@@ -724,6 +716,14 @@ export default function App() {
                 Sincronizar com Google Agenda
               </button>
             )}
+
+            {/* Quick scheduling button */}
+            <button
+              onClick={() => handleAddMission({ dateStr: '2026-06-06' })}
+              className="bg-purple-700 hover:bg-purple-600 text-white font-extrabold py-2 px-4 rounded-xl text-xs flex items-center gap-1.5 shadow-md transition hover:scale-102 active:scale-95 cursor-pointer"
+            >
+              <Plus className="w-4 h-4" /> Registrar Missão
+            </button>
           </div>
         </div>
       </header>
