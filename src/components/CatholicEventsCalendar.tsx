@@ -342,6 +342,11 @@ export default function CatholicEventsCalendar({
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
 
+  const [touchStart, setTouchStart] = useState<number | null>(null);
+  const [touchEnd, setTouchEnd] = useState<number | null>(null);
+  const [touchStartY, setTouchStartY] = useState<number | null>(null);
+  const [touchEndY, setTouchEndY] = useState<number | null>(null);
+
   const handlePrevMonth = () => {
     setCurrentDate(new Date(year, month - 1, 1));
   };
@@ -350,6 +355,33 @@ export default function CatholicEventsCalendar({
   };
   const handleToday = () => {
     setCurrentDate(new Date(2026, 5, 6)); // June 6 2026
+  };
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    setTouchStart(e.targetTouches[0].clientX);
+    setTouchStartY(e.targetTouches[0].clientY);
+    setTouchEnd(null);
+    setTouchEndY(null);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    setTouchEnd(e.targetTouches[0].clientX);
+    setTouchEndY(e.targetTouches[0].clientY);
+  };
+
+  const handleTouchEnd = () => {
+    if (touchStart === null || touchEnd === null || touchStartY === null || touchEndY === null) return;
+    const diffX = touchStart - touchEnd;
+    const diffY = touchStartY - touchEndY;
+    
+    // Thresholds: Mostly horizontal, X movement > 50px, Y movement < 60px
+    if (Math.abs(diffX) > 50 && Math.abs(diffY) < 60) {
+      if (diffX > 0) {
+        handleNextMonth();
+      } else {
+        handlePrevMonth();
+      }
+    }
   };
 
   const totalDays = new Date(year, month + 1, 0).getDate();
@@ -663,7 +695,7 @@ export default function CatholicEventsCalendar({
           <div className="flex items-center justify-between border-b border-rose-100 pb-2.5">
             <h3 className="text-xs font-black uppercase text-rose-900 flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-rose-600 animate-pulse" />
-              ✨ Mural de destaques e fotos — Eventos Católicos
+              ✨ Próximos eventos
             </h3>
             <span className="text-[10px] bg-rose-100 text-rose-800 font-extrabold px-2 py-0.5 rounded-lg">
               {activeSlideIndex + 1} de {sortedEventsForSlides.length}
@@ -825,7 +857,12 @@ export default function CatholicEventsCalendar({
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         
         {/* Left Area: Wine Calendar Grid (col-span-5) */}
-        <div className="col-span-1 lg:col-span-5 bg-white border border-rose-100 rounded-2xl p-4 md:p-5 shadow-xs space-y-4">
+        <div 
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          className="col-span-1 lg:col-span-5 bg-white border border-rose-100 rounded-2xl p-4 md:p-5 shadow-xs space-y-4 touch-pan-y"
+        >
           
           <div className="flex items-center justify-between border-b border-rose-100 pb-3">
             <div className="flex items-center gap-2">

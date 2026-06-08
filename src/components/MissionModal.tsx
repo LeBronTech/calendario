@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { X, Calendar, MapPin, Clock, Save, Bookmark, Instagram, Upload, Trash2, Tag } from 'lucide-react';
-import { Mission, CatholicMovement, DailyTimeConfig } from '../types';
+import { Mission, CatholicMovement, DailyTimeConfig, RecurrenceConfig } from '../types';
 import { MOVEMENT_DATA, getMovementStyle } from '../utils/catholicData';
 
 interface MissionModalProps {
@@ -97,6 +97,13 @@ export default function MissionModal({
   const [status, setStatus] = useState<Mission['status']>('preparing');
   const [dailySchedules, setDailySchedules] = useState<DailyTimeConfig[]>([]);
 
+  // Recurrence states
+  const [recurrenceFreq, setRecurrenceFreq] = useState<RecurrenceConfig['frequency']>('none');
+  const [recurrenceDays, setRecurrenceDays] = useState<number[]>([]);
+  const [recurrenceEndDate, setRecurrenceEndDate] = useState('');
+  const [customDates, setCustomDates] = useState<string[]>([]);
+  const [newCustomDate, setNewCustomDate] = useState('');
+
   // Load editing state or reset
   useEffect(() => {
     if (editMission) {
@@ -116,6 +123,18 @@ export default function MissionModal({
       setMovementLogoUrl(editMission.movementLogoUrl || '');
       setDailySchedules(editMission.dailySchedules || []);
 
+      if (editMission.recurrence) {
+        setRecurrenceFreq(editMission.recurrence.frequency);
+        setRecurrenceDays(editMission.recurrence.daysOfWeek || []);
+        setRecurrenceEndDate(editMission.recurrence.endDate || '');
+        setCustomDates(editMission.recurrence.customDates || []);
+      } else {
+        setRecurrenceFreq('none');
+        setRecurrenceDays([]);
+        setRecurrenceEndDate('');
+        setCustomDates([]);
+      }
+      
       // Check if standard movement or custom
       const isStandard = Object.values(CatholicMovement).includes(editMission.movement as CatholicMovement);
       if (isStandard) {
@@ -146,6 +165,10 @@ export default function MissionModal({
       setObservation('');
       setStatus(initialDate ? 'preparing' : 'backlog');
       setDailySchedules([]);
+      setRecurrenceFreq('none');
+      setRecurrenceDays([]);
+      setRecurrenceEndDate('');
+      setCustomDates([]);
     }
   }, [editMission, initialDate, isOpen]);
 
@@ -177,6 +200,23 @@ export default function MissionModal({
   }, [dateStr, endDateStr, startTime, endTime]);
 
   if (!isOpen) return null;
+
+  const toggleDayOfWeek = (day: number) => {
+    setRecurrenceDays(prev => 
+      prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day]
+    );
+  };
+
+  const addCustomDate = () => {
+    if (newCustomDate && !customDates.includes(newCustomDate)) {
+      setCustomDates(prev => [...prev, newCustomDate].sort());
+      setNewCustomDate('');
+    }
+  };
+
+  const removeCustomDate = (date: string) => {
+    setCustomDates(prev => prev.filter(d => d !== date));
+  };
 
   const toggleRole = (roleId: string) => {
     setSelectedRoles((prev) =>
@@ -239,6 +279,12 @@ export default function MissionModal({
       status,
       checklist: [], 
       dailySchedules: endDateStr && endDateStr !== dateStr ? dailySchedules : undefined,
+      recurrence: recurrenceFreq !== 'none' ? {
+        frequency: recurrenceFreq,
+        daysOfWeek: recurrenceDays.length > 0 ? recurrenceDays : undefined,
+        customDates: customDates.length > 0 ? customDates : undefined,
+        endDate: recurrenceEndDate || undefined,
+      } : undefined,
     };
 
     if (editMission) {
@@ -620,6 +666,82 @@ export default function MissionModal({
               rows={2}
               className="w-full bg-white border border-purple-200 rounded-xl px-3 py-1.5 outline-none focus:border-purple-600 text-purple-800 text-xs"
             />
+          </div>
+
+          {/* Recurrence Options */}
+          <div className="p-3 bg-purple-50 rounded-xl border border-purple-200 space-y-3">
+            <label className="text-[10px] font-black uppercase text-purple-700 block">Repetir Evento (Recorrência)</label>
+            <select
+              value={recurrenceFreq}
+              onChange={(e) => setRecurrenceFreq(e.target.value as any)}
+              className="w-full bg-white border border-purple-300 rounded-lg px-2.5 py-1 text-xs outline-none focus:border-purple-600 font-semibold"
+            >
+              <option value="none">Não repetir</option>
+              <option value="weekly">Semanalmente (Escolha os dias)</option>
+              <option value="custom">Datas Específicas (Duplicar para outras datas)</option>
+            </select>
+
+            {recurrenceFreq === 'weekly' && (
+              <div className="space-y-2">
+                <label className="text-[9px] font-black uppercase text-purple-600 block">Dias da Semana</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map((day, idx) => (
+                    <button
+                      key={day}
+                      type="button"
+                      onClick={() => toggleDayOfWeek(idx)}
+                      className={`px-2 py-1 rounded-lg text-[10px] font-bold border transition ${
+                        recurrenceDays.includes(idx)
+                          ? 'bg-purple-600 border-purple-600 text-white shadow-sm'
+                          : 'bg-white border-purple-200 text-purple-600 hover:bg-purple-50'
+                      }`}
+                    >
+                      {day}
+                    </button>
+                  ))}
+                </div>
+                <div className="space-y-1 mt-2">
+                  <label className="text-[9px] font-black uppercase text-purple-600 block">Até quando repetir? (Opcional)</label>
+                  <input
+                    type="date"
+                    value={recurrenceEndDate}
+                    onChange={(e) => setRecurrenceEndDate(e.target.value)}
+                    className="w-full bg-white border border-purple-300 rounded-lg px-2 py-1 text-xs outline-none focus:border-purple-600 font-semibold"
+                  />
+                </div>
+              </div>
+            )}
+
+            {recurrenceFreq === 'custom' && (
+              <div className="space-y-2">
+                <label className="text-[9px] font-black uppercase text-purple-600 block">Adicionar Outras Datas</label>
+                <div className="flex gap-1.5">
+                  <input
+                    type="date"
+                    value={newCustomDate}
+                    onChange={(e) => setNewCustomDate(e.target.value)}
+                    className="flex-1 bg-white border border-purple-300 rounded-lg px-2 py-1 text-xs outline-none focus:border-purple-600 font-semibold"
+                  />
+                  <button
+                    type="button"
+                    onClick={addCustomDate}
+                    className="px-2.5 py-1 bg-purple-700 text-white rounded-lg text-[10px] font-black uppercase"
+                  >
+                    Adicionar
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {customDates.map(date => (
+                    <div key={date} className="flex items-center gap-1 bg-purple-100 text-purple-800 px-2 py-1 rounded-lg text-[10px] font-bold border border-purple-200">
+                      <span>{date}</span>
+                      <button type="button" onClick={() => removeCustomDate(date)} className="text-purple-400 hover:text-red-500">
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Observation text area */}

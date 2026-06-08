@@ -24,8 +24,8 @@ const provider = new GoogleAuthProvider();
 provider.addScope('https://www.googleapis.com/auth/calendar.events');
 provider.addScope('https://www.googleapis.com/auth/calendar.readonly');
 
-// Cache the access token in memory
-let cachedAccessToken: string | null = null;
+// Cache the access token in memory / local storage
+let cachedAccessToken: string | null = typeof window !== 'undefined' ? localStorage.getItem('_cached_google_token') : null;
 let isSigningIn = false;
 
 // Initialize auth listener
@@ -35,14 +35,15 @@ export const initAuth = (
 ) => {
   return onAuthStateChanged(auth, async (user: User | null) => {
     if (user) {
-      if (cachedAccessToken) {
-        if (onAuthSuccess) onAuthSuccess(user, cachedAccessToken);
-      } else {
-        // If we don't have the token in memory, need to trigger a pop-up sign in
-        if (onAuthFailure) onAuthFailure();
+      // Allow remaining logged in as Firebase user even without cachedAccessToken (or using the cached token if it exists)
+      if (onAuthSuccess) {
+        onAuthSuccess(user, cachedAccessToken);
       }
     } else {
       cachedAccessToken = null;
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('_cached_google_token');
+      }
       if (onAuthFailure) onAuthFailure();
     }
   });
@@ -59,8 +60,10 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
     }
 
     cachedAccessToken = credential.accessToken;
-    // Keep reference in case user refreshed but we are in-memory (it persists per page session)
-    sessionStorage.setItem('_g_connected', 'true');
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('_cached_google_token', credential.accessToken);
+      sessionStorage.setItem('_g_connected', 'true');
+    }
     return { user: result.user, accessToken: cachedAccessToken };
   } catch (error: any) {
     console.error('Erro de login no Google:', error);
@@ -79,5 +82,8 @@ export const getAccessToken = async (): Promise<string | null> => {
 export const logout = async () => {
   await auth.signOut();
   cachedAccessToken = null;
-  sessionStorage.removeItem('_g_connected');
+  if (typeof window !== 'undefined') {
+    localStorage.removeItem('_cached_google_token');
+    sessionStorage.removeItem('_g_connected');
+  }
 };

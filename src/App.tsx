@@ -27,7 +27,7 @@ import CatholicEventsCalendar from './components/CatholicEventsCalendar';
 
 // Auth Imports
 import { googleSignIn, logout, initAuth } from './utils/firebaseAuth';
-import { downloadMissions, uploadMission, removeMission } from './utils/firebaseDb';
+import { downloadMissions, uploadMission, removeMission, subscribeToMissions } from './utils/firebaseDb';
 import { User } from 'firebase/auth';
 
 const DEFAULT_MISSIONS: Mission[] = [
@@ -182,23 +182,30 @@ export default function App() {
   // Sync with Firestore whenever user logs in or is established
   useEffect(() => {
     if (user) {
-      addLog('Buscando seus dados salvos em nuvem...');
-      downloadMissions(user.uid).then(async (cloudMissions) => {
-        if (cloudMissions.length === 0) {
-          addLog('Fazendo backup seguro da sua agenda local na nuvem...');
-          for (const m of missions) {
-            await uploadMission(user.uid, m);
-          }
-          addLog('Seus dados locais foram salvos em segurança na nuvem!');
-        } else {
-          setMissions(cloudMissions);
-          localStorage.setItem('missions_db_maria', JSON.stringify(cloudMissions));
-          addLog(`Sincronizado! Carregadas ${cloudMissions.length} missões seguras de sua conta.`);
-        }
-      }).catch((err) => {
-        console.error('Erro ao sincronizar com Firestore:', err);
-        addLog('Erro de conexão ao sincronizar agenda com a nuvem.');
+      addLog('Conectando à nuvem para sincronia em tempo real...');
+      const unsubscribe = subscribeToMissions(user.uid, (cloudMissions) => {
+        // Merge logic: keep local unsynced missions, update/add from cloud, remove deleted from cloud
+        setMissions((prevMissions) => {
+          const cloudIds = new Set(cloudMissions.map((m) => m.id));
+          
+          // Start with cloud missions (source of truth for synced data)
+          const merged = [...cloudMissions];
+          
+          // Add back ONLY local missions that were locally unsynced
+          prevMissions.forEach((lm) => {
+            if (!lm.synced && !cloudIds.has(lm.id)) {
+              merged.push(lm);
+            }
+          });
+          
+          localStorage.setItem('missions_db_maria', JSON.stringify(merged));
+          return merged;
+        });
+        
+        addLog(`Sincronizado! Dados atualizados com a nuvem.`);
       });
+
+      return () => unsubscribe();
     }
   }, [user]);
 
@@ -306,7 +313,7 @@ export default function App() {
       return 0;
     }
 
-    addLog('Sincronizando com Google Calendar...');
+    addLog('Sincronizando com Google Calendar e Nuvem...');
     const unsyncedMissions = missions.filter((m) => !m.synced && m.dateStr);
     let count = 0;
 
@@ -327,11 +334,19 @@ export default function App() {
       }
     }
 
+    // Always ensure Firestore has local data
+    if (user) {
+      for (const m of updatedMissions) {
+        uploadMission(user.uid, m).catch(console.error);
+      }
+      addLog('Backup de toda agenda local salvo na nuvem.');
+    }
+
     if (count > 0) {
       saveMissionsState(updatedMissions);
       addLog(`Sincronizados ${count} eventos com o Google Agenda.`);
     } else {
-      addLog('Nenhum evento pendente para sincronia.');
+      addLog('Nenhum evento pendente para sincronia com Google Agenda.');
     }
 
     return count;
@@ -447,11 +462,12 @@ export default function App() {
 
     } else {
       // Creation
-      const newMission: Mission = {
-        id: 'mission-' + Date.now(),
+      const isRecurrent = payload.recurrence && payload.recurrence.frequency !== 'none';
+      const missionsToCreate: Mission[] = [];
+
+      const baseMission = {
         title: payload.title || 'Sem título',
         movement: payload.movement || CatholicMovement.PAROQUIAL,
-        dateStr: payload.dateStr || '',
         startTime: payload.startTime || '19:00',
         endTime: payload.endTime || '20:30',
         location: payload.location || '',
@@ -459,26 +475,87 @@ export default function App() {
         status: payload.status || (payload.dateStr ? 'preparing' : 'backlog'),
         checklist: [],
         instagramUrl: payload.instagramUrl || '',
+        instagramImgUrl: payload.instagramImgUrl,
+        movementLogoUrl: payload.movementLogoUrl,
+        tipo: payload.tipo,
         roles: payload.roles || [],
         observation: payload.observation || '',
+        dailySchedules: payload.dailySchedules,
+        endDateStr: payload.endDateStr,
+        recurrence: payload.recurrence,
         synced: false,
         createdAt: new Date().toISOString()
       };
 
-      if (accessToken && newMission.dateStr && !isSimulatedOffline) {
-        const gId = await pushEventToGoogleCalendar(newMission, accessToken);
-        if (gId) {
-          newMission.googleEventId = gId;
-          newMission.synced = true;
+      if (!isRecurrent) {
+        missionsToCreate.push({
+          id: 'mission-' + Date.now(),
+          dateStr: payload.dateStr || '',
+          ...baseMission
+        });
+      } else {
+        const rc = payload.recurrence!;
+        if (rc.frequency === 'weekly' && rc.daysOfWeek && rc.daysOfWeek.length > 0) {
+          // Generate weekly occurrences for 3 months (or until end date)
+          const start = new Date((payload.dateStr || '2026-06-06') + 'T12:00:00');
+          const end = rc.endDate ? new Date(rc.endDate + 'T12:00:00') : new Date(start);
+          if (!rc.endDate) end.setMonth(end.getMonth() + 3);
+
+          const current = new Date(start);
+          while (current <= end) {
+            if (rc.daysOfWeek.includes(current.getDay())) {
+              const dStr = current.toISOString().split('T')[0];
+              missionsToCreate.push({
+                id: `mission-${Date.now()}-${dStr}`,
+                dateStr: dStr,
+                ...baseMission,
+                recurrence: { ...rc, frequency: 'none' } // Mark individual as non-recurrent to avoid confusion
+              });
+            }
+            current.setDate(current.getDate() + 1);
+          }
+        } else if (rc.frequency === 'custom' && rc.customDates) {
+          rc.customDates.forEach((dStr, idx) => {
+            missionsToCreate.push({
+              id: `mission-${Date.now()}-${idx}`,
+              dateStr: dStr,
+              ...baseMission,
+              recurrence: { ...rc, frequency: 'none' }
+            });
+          });
+        } else {
+          // Fallback to single
+          missionsToCreate.push({
+            id: 'mission-' + Date.now(),
+            dateStr: payload.dateStr || '',
+            ...baseMission
+          });
         }
       }
 
-      saveMissionsState([newMission, ...missions]);
-      if (user) {
-        uploadMission(user.uid, newMission).catch(console.error);
-      }
-      addLog(`Cadastrada nova missão: "${newMission.title}".`);
-      sendAlert('Missão Agendada ⛪', `"${newMission.title}" foi salva nos registros paroquiais.`);
+      // Sync and save all created missions
+      const syncAndSave = async () => {
+        const finalMissions: Mission[] = [];
+        for (const nm of missionsToCreate) {
+          const mission = { ...nm };
+          if (accessToken && mission.dateStr && !isSimulatedOffline) {
+            const gId = await pushEventToGoogleCalendar(mission, accessToken);
+            if (gId) {
+              mission.googleEventId = gId;
+              mission.synced = true;
+            }
+          }
+          finalMissions.push(mission);
+          if (user) {
+            uploadMission(user.uid, mission).catch(console.error);
+          }
+        }
+        saveMissionsState([...finalMissions, ...missions]);
+        addLog(`Cadastrada(s) ${finalMissions.length} nova(s) missão(ões): "${baseMission.title}".`);
+        sendAlert('Missão Agendada ⛪', `"${baseMission.title}" foi salva nos registros paroquiais.`);
+      };
+
+      syncAndSave();
     }
 
     setEditMission(null);
@@ -658,22 +735,22 @@ export default function App() {
             onClick={() => setCurrentMainSection('personal')}
             className={`flex-1 py-2 px-3 rounded-xl text-xs font-black transition flex items-center justify-center gap-1.5 cursor-pointer ${
               currentMainSection === 'personal'
-                ? 'bg-purple-750 text-white shadow-md font-black'
+                ? 'bg-purple-900 text-white shadow-md font-black border border-purple-950/10'
                 : 'text-purple-600 hover:text-purple-950 font-bold'
             }`}
           >
-            <Church className="w-4 h-4" /> Agenda Pessoal
+            <Church className={`w-4 h-4 ${currentMainSection === 'personal' ? 'text-purple-200' : 'text-purple-500'}`} /> Agenda Pessoal
           </button>
           
           <button
             onClick={() => setCurrentMainSection('catalog')}
             className={`flex-1 py-2 px-3 rounded-xl text-xs font-black transition flex items-center justify-center gap-1.5 cursor-pointer ${
               currentMainSection === 'catalog'
-                ? 'bg-[#5B1E31] text-white shadow-md font-black'
+                ? 'bg-[#5B1E31] text-rose-100 shadow-md font-black border border-rose-500/10'
                 : 'text-rose-800 hover:text-rose-950 font-bold'
             }`}
           >
-            <Globe className="w-4 h-4" /> Eventos Católicos
+            <Globe className={`w-4 h-4 ${currentMainSection === 'catalog' ? 'text-rose-300' : 'text-rose-700'}`} /> Eventos Católicos
           </button>
         </div>
       </div>

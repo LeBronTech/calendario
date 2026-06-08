@@ -132,6 +132,11 @@ export default function CalendarView({
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
 
+  const [touchStart, setTouchStart] = useState<number | null>(null);
+  const [touchEnd, setTouchEnd] = useState<number | null>(null);
+  const [touchStartY, setTouchStartY] = useState<number | null>(null);
+  const [touchEndY, setTouchEndY] = useState<number | null>(null);
+
   const handlePrevMonth = () => {
     setCurrentDate(new Date(year, month - 1, 1));
   };
@@ -143,6 +148,33 @@ export default function CalendarView({
   const handleToday = () => {
     // Current simulated date: June 6th, 2026
     setCurrentDate(new Date(2026, 5, 6));
+  };
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    setTouchStart(e.targetTouches[0].clientX);
+    setTouchStartY(e.targetTouches[0].clientY);
+    setTouchEnd(null);
+    setTouchEndY(null);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    setTouchEnd(e.targetTouches[0].clientX);
+    setTouchEndY(e.targetTouches[0].clientY);
+  };
+
+  const handleTouchEnd = () => {
+    if (touchStart === null || touchEnd === null || touchStartY === null || touchEndY === null) return;
+    const diffX = touchStart - touchEnd;
+    const diffY = touchStartY - touchEndY;
+    
+    // Thresholds: Mostly horizontal, X movement > 50px, Y movement < 60px
+    if (Math.abs(diffX) > 50 && Math.abs(diffY) < 60) {
+      if (diffX > 0) {
+        handleNextMonth();
+      } else {
+        handlePrevMonth();
+      }
+    }
   };
 
   // Days calculations
@@ -168,7 +200,12 @@ export default function CalendarView({
   };
 
   return (
-    <div className="bg-white rounded-2xl border border-purple-100 shadow-xs p-4 md:p-6 select-none">
+    <div
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      className="bg-white rounded-2xl border border-purple-100 shadow-xs p-4 md:p-6 select-none touch-pan-y"
+    >
       {/* Calendar Header Controls */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mb-4 pb-3 border-b border-purple-100">
         <div className="flex items-center gap-2">

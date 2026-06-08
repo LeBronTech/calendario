@@ -4,7 +4,7 @@
  */
 
 import { db, auth } from './firebaseAuth';
-import { collection, doc, setDoc, getDocs, deleteDoc } from 'firebase/firestore';
+import { collection, doc, setDoc, getDocs, deleteDoc, onSnapshot, query } from 'firebase/firestore';
 import { Mission } from '../types';
 import { CatholicEvent } from './seededCatholicEvents';
 
@@ -63,11 +63,29 @@ export async function downloadMissions(userId: string): Promise<Mission[]> {
   }
 }
 
+// Subscribe to user's missions for real-time updates
+export function subscribeToMissions(userId: string, onUpdate: (missions: Mission[]) => void): () => void {
+  const path = `users/${userId}/missions`;
+  const q = query(collection(db, path));
+  
+  return onSnapshot(q, (snapshot) => {
+    const list: Mission[] = [];
+    snapshot.forEach((docSnap) => {
+      list.push(docSnap.data() as Mission);
+    });
+    onUpdate(list);
+  }, (error) => {
+    handleFirestoreError(error, OperationType.GET, path);
+  });
+}
+
 // Save/Update mission in Firestore
 export async function uploadMission(userId: string, mission: Mission): Promise<void> {
   const path = `users/${userId}/missions`;
   try {
-    await setDoc(doc(db, path, mission.id), mission);
+    // Remove undefined fields to prevent Firestore errors
+    const cleanedMission = JSON.parse(JSON.stringify(mission));
+    await setDoc(doc(db, path, mission.id), cleanedMission);
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `${path}/${mission.id}`);
   }

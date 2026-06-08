@@ -29,6 +29,13 @@ export interface DailyTimeConfig {
   active: boolean; // If false/inactive, this day is not active (leaving the day's hours free for other events)
 }
 
+export interface RecurrenceConfig {
+  frequency: 'none' | 'weekly' | 'monthly' | 'custom';
+  daysOfWeek?: number[]; // 0-6
+  customDates?: string[];
+  endDate?: string;
+}
+
 export interface Mission {
   id: string;
   title: string;
@@ -58,6 +65,7 @@ export interface Mission {
   roles?: string[]; // ['cantar', 'tocar', 'pregar', 'interceder', 'servir']
   observation?: string;
   dailySchedules?: DailyTimeConfig[]; // Custom schedules per day for multi-day events
+  recurrence?: RecurrenceConfig;
 }
 
 export interface ChatMessage {

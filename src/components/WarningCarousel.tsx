@@ -130,7 +130,7 @@ export default function WarningCarousel({
       <div className="flex items-center justify-between border-b border-purple-100 pb-2.5">
         <h3 className="text-xs font-black uppercase text-purple-900 flex items-center gap-2">
           <Sparkles className="w-4 h-4 text-purple-600 animate-pulse" />
-          ✨ Mural de destaques e fotos — Minha Agenda Pessoal
+          Próximas missões
         </h3>
         <span className="text-[10px] bg-purple-100 text-purple-800 font-extrabold px-2 py-0.5 rounded-lg font-sans">
           {currentIndex + 1} de {carouselEvents.length}
