@@ -47,16 +47,19 @@ const MONTHS_PT = [
 const DAYS_SHORT_PT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
 const TIPO_OPTIONS = [
+  { value: '', label: 'Sem tipo específico' },
+  { value: 'missa', label: '⛪ Missa' },
+  { value: 'terco', label: '📿 Terço' },
+  { value: 'missao', label: '✝️ Missão' },
   { value: 'vigilia', label: '🌙 Vigília' },
-  { value: 'luau', label: '🔥 Luau' },
-  { value: 'adoracao', label: '⛪ Adoração' },
-  { value: 'retiro', label: '🍃 Retiro' },
-  { value: 'encontro', label: '👥 Encontro Jovem' },
+  { value: 'luau', label: '🪵 Luau' },
+  { value: 'adoracao', label: '🙏 Adoração' },
+  { value: 'retiro', label: '⛰️ Retiro' },
+  { value: 'encontro', label: '👥 Encontro' },
   { value: 'acampamento', label: '⛺ Acampamento / Fest' },
   { value: 'seminario', label: '📖 Seminário / Formação' },
-  { value: 'grupo', label: '🗣️ Grupo de Oração' },
-  { value: 'missa', label: '🍞 Missa Solene' },
-  { value: 'reuniao', label: '💼 Reunião' }
+  { value: 'grupo', label: '🔥 Grupo de Oração' },
+  { value: 'reuniao', label: '💼 Reunião' },
 ];
 
 const AVAILABLE_COLORS = [

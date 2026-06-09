@@ -11,7 +11,7 @@ import { getMovementStyle, getSortedMovements } from '../utils/catholicData';
 interface MissionModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (mission: Partial<Mission>) => void;
+  onSave: (mission: Partial<Mission>, applyToSeries?: boolean) => void;
   initialDate?: string;
   editMission?: Mission | null;
 }
@@ -26,13 +26,16 @@ const AVAILABLE_ROLES = [
 
 const TIPO_OPTIONS = [
   { value: '', label: 'Selecione o Tipo (Opcional)' },
+  { value: 'missa', label: '⛪ Missa' },
+  { value: 'terco', label: '📿 Terço' },
+  { value: 'missao', label: '✝️ Missão' },
   { value: 'vigilia', label: '🌙 Vigília' },
   { value: 'luau', label: '🪵 Luau' },
   { value: 'adoracao', label: '🙏 Adoração' },
   { value: 'retiro', label: '⛰️ Retiro' },
   { value: 'encontro', label: '👥 Encontro' },
-  { value: 'acampamento', label: '⛺ Acampamento' },
-  { value: 'seminario', label: '📖 Seminário' },
+  { value: 'acampamento', label: '⛺ Acampamento / Fest' },
+  { value: 'seminario', label: '📖 Seminário / Formação' },
   { value: 'grupo', label: '🔥 Grupo de Oração' },
   { value: 'reuniao', label: '💼 Reunião' },
 ];
@@ -311,9 +314,7 @@ export default function MissionModal({
     );
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-
+  const handleSubmit = (applyToSeries: boolean = false) => {
     const finalMovement = useCustomMovement ? (customMovementName.trim() || 'Customizado') : movement;
 
     // Save movement to color class mapping persistently
@@ -379,7 +380,7 @@ export default function MissionModal({
       payload.synced = editMission.synced;
     }
 
-    onSave(payload);
+    onSave(payload, applyToSeries);
   };
 
   const isTitleDiff = title !== (editMission?.title || '');
@@ -443,7 +444,7 @@ export default function MissionModal({
         )}
 
         {/* Scrollable Form Body */}
-        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-5 space-y-4 text-xs text-purple-950">
+        <form onSubmit={(e) => { e.preventDefault(); handleSubmit(false); }} className="flex-1 overflow-y-auto p-5 space-y-4 text-xs text-purple-950">
           
           {/* Title - Title of the mission */}
           <div className="space-y-1">
@@ -822,28 +823,33 @@ export default function MissionModal({
             >
               <option value="none">Não repetir</option>
               <option value="weekly">Semanalmente (Escolha os dias)</option>
+              <option value="monthly">Mensalmente (Mesmo dia do mês)</option>
               <option value="custom">Datas Específicas (Duplicar para outras datas)</option>
             </select>
 
-            {recurrenceFreq === 'weekly' && (
+            {(recurrenceFreq === 'weekly' || recurrenceFreq === 'monthly') && (
               <div className="space-y-2">
-                <label className="text-[9px] font-black uppercase text-purple-600 block">Dias da Semana</label>
-                <div className="flex flex-wrap gap-1.5">
-                  {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map((day, idx) => (
-                    <button
-                      key={day}
-                      type="button"
-                      onClick={() => toggleDayOfWeek(idx)}
-                      className={`px-2 py-1 rounded-lg text-[10px] font-bold border transition ${
-                        recurrenceDays.includes(idx)
-                          ? 'bg-purple-600 border-purple-600 text-white shadow-sm'
-                          : 'bg-white border-purple-200 text-purple-600 hover:bg-purple-50'
-                      }`}
-                    >
-                      {day}
-                    </button>
-                  ))}
-                </div>
+                {recurrenceFreq === 'weekly' && (
+                  <>
+                    <label className="text-[9px] font-black uppercase text-purple-600 block">Dias da Semana</label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map((day, idx) => (
+                        <button
+                          key={day}
+                          type="button"
+                          onClick={() => toggleDayOfWeek(idx)}
+                          className={`px-2 py-1 rounded-lg text-[10px] font-bold border transition ${
+                            recurrenceDays.includes(idx)
+                              ? 'bg-purple-600 border-purple-600 text-white shadow-sm'
+                              : 'bg-white border-purple-200 text-purple-600 hover:bg-purple-50'
+                          }`}
+                        >
+                          {day}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
                 <div className="space-y-1 mt-2">
                   <label className="text-[9px] font-black uppercase text-purple-600 block">Até quando repetir? (Opcional)</label>
                   <input
@@ -852,6 +858,9 @@ export default function MissionModal({
                     onChange={(e) => setRecurrenceEndDate(e.target.value)}
                     className="w-full bg-white border border-purple-300 rounded-lg px-2 py-1 text-xs outline-none focus:border-purple-600 font-semibold"
                   />
+                  {recurrenceFreq === 'monthly' && !recurrenceEndDate && (
+                    <p className="text-[8px] text-purple-500">Se deixado em branco, repetirá pelos próximos 12 meses.</p>
+                  )}
                 </div>
               </div>
             )}
@@ -905,13 +914,35 @@ export default function MissionModal({
         {/* Footer actions with dynamic close/save buttons */}
         <div className="bg-[#F5EEFD] border-t border-purple-150 p-2.5 px-4 flex gap-1.5 justify-end items-center shrink-0">
           {hasChanged ? (
-            <button
-              type="button"
-              onClick={handleSubmit}
-              className="px-4 py-1.5 rounded-lg bg-purple-700 hover:bg-purple-600 font-extrabold text-[11px] text-white flex items-center gap-1 shadow-md transition cursor-pointer"
-            >
-              <Save className="w-3 h-3" /> Salvar
-            </button>
+            <>
+              {editMission ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => handleSubmit(true)}
+                    className="px-4 py-1.5 rounded-lg bg-orange-600 hover:bg-orange-500 font-extrabold text-[11px] text-white flex items-center gap-1 shadow-md transition cursor-pointer"
+                    title="Aplica edição para a série: mesmo título, horário e movimento"
+                  >
+                    <Save className="w-3 h-3" /> Editar toda Série
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSubmit(false)}
+                    className="px-4 py-1.5 rounded-lg bg-purple-700 hover:bg-purple-600 font-extrabold text-[11px] text-white flex items-center gap-1 shadow-md transition cursor-pointer"
+                  >
+                    <Save className="w-3 h-3" /> Salvar SÓ este
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => handleSubmit(false)}
+                  className="px-4 py-1.5 rounded-lg bg-purple-700 hover:bg-purple-600 font-extrabold text-[11px] text-white flex items-center gap-1 shadow-md transition cursor-pointer"
+                >
+                  <Save className="w-3 h-3" /> Salvar
+                </button>
+              )}
+            </>
           ) : (
             <button
               type="button"

@@ -1005,7 +1005,7 @@ export default function App() {
   };
 
   // Save changes of a mission (Create or Update)
-  const handleSaveMission = async (payload: Partial<Mission>) => {
+  const handleSaveMission = async (payload: Partial<Mission>, applyToSeries?: boolean) => {
     setIsFormModalOpen(false);
     
     const isEditing = !!payload.id;
@@ -1038,11 +1038,35 @@ export default function App() {
 
     if (isEditing) {
       // Update
+      const originalM = editMission;
+
       const updated = missions.map(async (m) => {
-        if (m.id === payload.id) {
-          const merged: Mission = {
+        const isSelf = m.id === payload.id;
+        const isSeriesMatch = applyToSeries && originalM && m.id !== payload.id &&
+                              m.title === originalM.title &&
+                              m.movement === originalM.movement &&
+                              m.startTime === originalM.startTime;
+
+        if (isSelf || isSeriesMatch) {
+          const merged: Mission = isSelf ? {
             ...m,
             ...payload,
+            synced: false,
+          } as Mission : {
+            ...m,
+            title: payload.title || m.title,
+            movement: payload.movement || m.movement,
+            startTime: payload.startTime || m.startTime,
+            endTime: payload.endTime || m.endTime,
+            location: payload.location || m.location,
+            description: payload.description || m.description,
+            instagramUrl: payload.instagramUrl || m.instagramUrl,
+            instagramImgUrl: payload.instagramImgUrl,
+            movementLogoUrl: payload.movementLogoUrl,
+            tipo: payload.tipo,
+            roles: payload.roles || m.roles,
+            observation: payload.observation || m.observation,
+            cardColor: payload.cardColor,
             synced: false,
           } as Mission;
 
@@ -1078,6 +1102,9 @@ export default function App() {
             }
           }
           addLog(`Ajustadas informações da missão "${merged.title}".`);
+          if (user) {
+            uploadMission(user.uid, merged).catch(console.error);
+          }
           return merged;
         }
         return m;
@@ -1103,6 +1130,29 @@ export default function App() {
               });
             }
             current.setDate(current.getDate() + 1);
+          }
+        } else if (rc.frequency === 'monthly' && payload.dateStr) {
+          const start = new Date(payload.dateStr + 'T12:00:00');
+          const end = rc.endDate ? new Date(rc.endDate + 'T12:00:00') : new Date(start);
+          if (!rc.endDate) end.setFullYear(end.getFullYear() + 1);
+
+          const current = new Date(start);
+          const dayOfM = current.getDate();
+          while (current <= end) {
+            const dStr = current.toISOString().split('T')[0];
+            if (dStr !== payload.dateStr) {
+              missionsToCreate.push({
+                id: `mission-${Date.now()}-${dStr}-${Math.random().toString(36).substring(2, 9)}`,
+                dateStr: dStr,
+                ...baseMission,
+                recurrence: { ...rc, frequency: 'none' as const }
+              });
+            }
+            const expectedMonth = (current.getMonth() + 1) % 12;
+            current.setMonth(current.getMonth() + 1);
+            if (current.getMonth() !== expectedMonth) {
+              current.setDate(0); 
+            }
           }
         } else if (rc.frequency === 'custom' && rc.customDates) {
           rc.customDates.forEach((dStr, idx) => {
@@ -1219,6 +1269,29 @@ export default function App() {
               });
             }
             current.setDate(current.getDate() + 1);
+          }
+        } else if (rc.frequency === 'monthly' && payload.dateStr) {
+          const start = new Date(payload.dateStr + 'T12:00:00');
+          const end = rc.endDate ? new Date(rc.endDate + 'T12:00:00') : new Date(start);
+          if (!rc.endDate) end.setFullYear(end.getFullYear() + 1);
+
+          const current = new Date(start);
+          const dayOfM = current.getDate();
+          while (current <= end) {
+            const dStr = current.toISOString().split('T')[0];
+            if (dStr !== payload.dateStr) {
+              missionsToCreate.push({
+                id: `mission-${Date.now()}-${dStr}-${Math.random().toString(36).substring(2, 9)}`,
+                dateStr: dStr,
+                ...baseMission,
+                recurrence: { ...rc, frequency: 'none' as const } // Mark individual as non-recurrent to avoid confusion
+              });
+            }
+            const expectedMonth = (current.getMonth() + 1) % 12;
+            current.setMonth(current.getMonth() + 1);
+            if (current.getMonth() !== expectedMonth) {
+              current.setDate(0); 
+            }
           }
         } else if (rc.frequency === 'custom' && rc.customDates) {
           rc.customDates.forEach((dStr, idx) => {
