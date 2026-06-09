@@ -28,18 +28,20 @@ const AVAILABLE_ROLES = [
 
 const TIPO_OPTIONS = [
   { value: '', label: 'Selecione o Tipo (Opcional)' },
-  { value: 'missa', label: '⛪ Missa' },
-  { value: 'terco', label: '📿 Terço' },
-  { value: 'missao', label: '✝️ Missão' },
-  { value: 'vigilia', label: '🌙 Vigília' },
-  { value: 'luau', label: '🪵 Luau' },
-  { value: 'adoracao', label: '🙏 Adoração' },
-  { value: 'retiro', label: '⛰️ Retiro' },
-  { value: 'encontro', label: '👥 Encontro' },
   { value: 'acampamento', label: '⛺ Acampamento / Fest' },
-  { value: 'seminario', label: '📖 Seminário / Formação' },
+  { value: 'adoracao', label: '🙏 Adoração' },
+  { value: 'encontro', label: '👥 Encontro' },
+  { value: 'ensaio', label: '🎵 Ensaio' },
+  { value: 'evangelizacao', label: '📢 Evangelização' },
   { value: 'grupo', label: '🔥 Grupo de Oração' },
+  { value: 'luau', label: '🪵 Luau' },
+  { value: 'missa', label: '⛪ Missa' },
+  { value: 'missao', label: '✝️ Missão' },
+  { value: 'retiro', label: '⛰️ Retiro' },
   { value: 'reuniao', label: '💼 Reunião' },
+  { value: 'seminario', label: '📖 Seminário / Formação' },
+  { value: 'terco', label: '📿 Terço' },
+  { value: 'vigilia', label: '🌙 Vigília' },
 ];
 
 const AVAILABLE_COLORS = [
@@ -327,6 +329,33 @@ export default function MissionModal({
     } else {
       setUseCustomMovement(false);
       setMovementLogoUrl('');
+
+      if (!editMission && val) {
+        // Find last added event with this movement
+        const lastEvent = [...missions]
+          .filter((m) => m.movement === val)
+          .sort((a, b) => {
+            const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+            const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+            if (timeA !== timeB) return timeB - timeA;
+            return (b.id || '').localeCompare(a.id || '');
+          })[0];
+
+        if (lastEvent) {
+          if (lastEvent.title) setTitle(lastEvent.title);
+          if (lastEvent.location) setLocation(lastEvent.location);
+          if (lastEvent.description) setDescription(lastEvent.description);
+          if (lastEvent.instagramUrl) setInstagramUrl(lastEvent.instagramUrl);
+          if (lastEvent.instagramImgUrl) setInstagramImgUrl(lastEvent.instagramImgUrl);
+          if (lastEvent.tipo) setTipo(lastEvent.tipo);
+          if (lastEvent.roles) setSelectedRoles(lastEvent.roles);
+          if (lastEvent.observation) setObservation(lastEvent.observation);
+          if (lastEvent.startTime) setStartTime(lastEvent.startTime);
+          if (lastEvent.endTime) setEndTime(lastEvent.endTime);
+          if (lastEvent.movementLogoUrl) setMovementLogoUrl(lastEvent.movementLogoUrl);
+          if (lastEvent.cardColor) setSelectedColorClass(lastEvent.cardColor);
+        }
+      }
     }
   };
 
@@ -566,6 +595,34 @@ export default function MissionModal({
                     type="text"
                     value={customMovementName}
                     onChange={(e) => setCustomMovementName(e.target.value)}
+                    onBlur={() => {
+                      const name = customMovementName.trim();
+                      if (name && !editMission) {
+                        const lastEvent = [...missions]
+                          .filter((m) => m.movement.toLowerCase() === name.toLowerCase())
+                          .sort((a, b) => {
+                            const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+                            const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+                            if (timeA !== timeB) return timeB - timeA;
+                            return (b.id || '').localeCompare(a.id || '');
+                          })[0];
+
+                        if (lastEvent) {
+                          if (lastEvent.title) setTitle(lastEvent.title);
+                          if (lastEvent.location) setLocation(lastEvent.location);
+                          if (lastEvent.description) setDescription(lastEvent.description);
+                          if (lastEvent.instagramUrl) setInstagramUrl(lastEvent.instagramUrl);
+                          if (lastEvent.instagramImgUrl) setInstagramImgUrl(lastEvent.instagramImgUrl);
+                          if (lastEvent.tipo) setTipo(lastEvent.tipo);
+                          if (lastEvent.roles) setSelectedRoles(lastEvent.roles);
+                          if (lastEvent.observation) setObservation(lastEvent.observation);
+                          if (lastEvent.startTime) setStartTime(lastEvent.startTime);
+                          if (lastEvent.endTime) setEndTime(lastEvent.endTime);
+                          if (lastEvent.movementLogoUrl) setMovementLogoUrl(lastEvent.movementLogoUrl);
+                          if (lastEvent.cardColor) setSelectedColorClass(lastEvent.cardColor);
+                        }
+                      }
+                    }}
                     placeholder="Ex: Grupo de Casais, Terço de Mulheres"
                     className="w-full bg-white border border-purple-300 rounded-lg px-2.5 py-1 text-xs outline-none focus:border-purple-600 font-semibold"
                   />

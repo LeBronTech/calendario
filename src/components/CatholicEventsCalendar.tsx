@@ -48,18 +48,20 @@ const DAYS_SHORT_PT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
 const TIPO_OPTIONS = [
   { value: '', label: 'Sem tipo específico' },
-  { value: 'missa', label: '⛪ Missa' },
-  { value: 'terco', label: '📿 Terço' },
-  { value: 'missao', label: '✝️ Missão' },
-  { value: 'vigilia', label: '🌙 Vigília' },
-  { value: 'luau', label: '🪵 Luau' },
-  { value: 'adoracao', label: '🙏 Adoração' },
-  { value: 'retiro', label: '⛰️ Retiro' },
-  { value: 'encontro', label: '👥 Encontro' },
   { value: 'acampamento', label: '⛺ Acampamento / Fest' },
-  { value: 'seminario', label: '📖 Seminário / Formação' },
+  { value: 'adoracao', label: '🙏 Adoração' },
+  { value: 'encontro', label: '👥 Encontro' },
+  { value: 'ensaio', label: '🎵 Ensaio' },
+  { value: 'evangelizacao', label: '📢 Evangelização' },
   { value: 'grupo', label: '🔥 Grupo de Oração' },
+  { value: 'luau', label: '🪵 Luau' },
+  { value: 'missa', label: '⛪ Missa' },
+  { value: 'missao', label: '✝️ Missão' },
+  { value: 'retiro', label: '⛰️ Retiro' },
   { value: 'reuniao', label: '💼 Reunião' },
+  { value: 'seminario', label: '📖 Seminário / Formação' },
+  { value: 'terco', label: '📿 Terço' },
+  { value: 'vigilia', label: '🌙 Vigília' },
 ];
 
 const AVAILABLE_COLORS = [
