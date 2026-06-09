@@ -2735,8 +2735,10 @@ export default function App() {
         isOpen={isFormModalOpen}
         onClose={() => setIsFormModalOpen(false)}
         onSave={handleSaveMission}
+        onDelete={handleDeleteMission}
         initialDate={selectedDay}
         editMission={editMission}
+        missions={missions}
       />
 
       {/* Custom Deletion Confirmation Dialog */}

@@ -12,8 +12,10 @@ interface MissionModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (mission: Partial<Mission>, applyToSeries?: boolean) => void;
+  onDelete?: (id: string) => void;
   initialDate?: string;
   editMission?: Mission | null;
+  missions?: Mission[];
 }
 
 const AVAILABLE_ROLES = [
@@ -93,8 +95,10 @@ export default function MissionModal({
   isOpen,
   onClose,
   onSave,
+  onDelete,
   initialDate,
   editMission,
+  missions = [],
 }: MissionModalProps) {
   const [title, setTitle] = useState('');
   const [movement, setMovement] = useState<string>(CatholicMovement.PAROQUIAL);
@@ -128,6 +132,17 @@ export default function MissionModal({
   // Color configuration states
   const [movementColors, setMovementColors] = useState<Record<string, string>>({});
   const [selectedColorClass, setSelectedColorClass] = useState<string>('bg-purple-600');
+
+  // Check if editing a series event
+  const matchingSeriesEvents = editMission && missions 
+    ? missions.filter(m => 
+        m.id !== editMission.id &&
+        m.title === editMission.title &&
+        m.movement === editMission.movement &&
+        m.startTime === editMission.startTime
+      )
+    : [];
+  const isSeries = matchingSeriesEvents.length > 0;
 
   // Load custom movement colors map and listen for real-time changes
   useEffect(() => {
@@ -659,32 +674,36 @@ export default function MissionModal({
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
-            {/* Start Time input */}
-            <div className="space-y-1">
-              <label className="text-[10px] font-black uppercase text-purple-600 block flex items-center gap-1">
-                <Clock className="w-3.5 h-3.5 text-purple-500" /> Horário Início
-              </label>
-              <input
-                type="time"
-                value={startTime}
-                onChange={(e) => setStartTime(e.target.value)}
-                className="w-full bg-white border border-purple-200 rounded-xl px-3 py-1.5 outline-none text-purple-850 font-bold text-xs"
-              />
-            </div>
+          <div className={endDateStr ? "grid grid-cols-1 gap-3.5" : "grid grid-cols-1 md:grid-cols-3 gap-3.5"}>
+            {!endDateStr && (
+              <>
+                {/* Start Time input */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black uppercase text-purple-600 block flex items-center gap-1">
+                    <Clock className="w-3.5 h-3.5 text-purple-500" /> Horário Início
+                  </label>
+                  <input
+                    type="time"
+                    value={startTime}
+                    onChange={(e) => setStartTime(e.target.value)}
+                    className="w-full bg-white border border-purple-200 rounded-xl px-3 py-1.5 outline-none text-purple-850 font-bold text-xs"
+                  />
+                </div>
 
-            {/* End Time input */}
-            <div className="space-y-1">
-              <label className="text-[10px] font-black uppercase text-purple-600 block flex items-center gap-1">
-                <Clock className="w-3.5 h-3.5 text-purple-500" /> Horário Término
-              </label>
-              <input
-                type="time"
-                value={endTime}
-                onChange={(e) => setEndTime(e.target.value)}
-                className="w-full bg-white border border-purple-200 rounded-xl px-3 py-1.5 outline-none text-purple-850 font-bold text-xs"
-              />
-            </div>
+                {/* End Time input */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black uppercase text-purple-600 block flex items-center gap-1">
+                    <Clock className="w-3.5 h-3.5 text-purple-500" /> Horário Término
+                  </label>
+                  <input
+                    type="time"
+                    value={endTime}
+                    onChange={(e) => setEndTime(e.target.value)}
+                    className="w-full bg-white border border-purple-200 rounded-xl px-3 py-1.5 outline-none text-purple-850 font-bold text-xs"
+                  />
+                </div>
+              </>
+            )}
 
             {/* Status of the event */}
             <div className="space-y-1">
@@ -970,7 +989,37 @@ export default function MissionModal({
 
         {/* Footer actions with dynamic close/save buttons */}
         <div className="bg-[#F5EEFD] border-t border-purple-150 p-2.5 px-4 flex gap-1.5 justify-end items-center shrink-0">
-          {hasChanged ? (
+          {editMission && isSeries ? (
+            <>
+              {onDelete && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onDelete(editMission.id);
+                    onClose();
+                  }}
+                  className="mr-auto px-4 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 border border-rose-200 font-extrabold text-[11px] text-rose-700 flex items-center gap-1 shadow-xs transition cursor-pointer"
+                  title="Excluir este evento ou a série"
+                >
+                  <Trash2 className="w-3 h-3 text-rose-600" /> Excluir
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => handleSubmit(false)}
+                className="px-4 py-1.5 rounded-lg border border-purple-250 hover:bg-purple-100 font-extrabold text-[11px] text-purple-850 transition cursor-pointer"
+              >
+                Salvar
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSubmit(true)}
+                className="px-4 py-1.5 rounded-lg bg-purple-700 hover:bg-purple-600 font-extrabold text-[11px] text-white flex items-center gap-1 shadow-md transition cursor-pointer"
+              >
+                <Save className="w-3 h-3" /> Salvar em série
+              </button>
+            </>
+          ) : hasChanged ? (
             <>
               {editMission ? (
                 <>

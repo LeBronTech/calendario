@@ -1045,26 +1045,30 @@ export default function DayActivityModal({
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
-                {/* Time pickers */}
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black uppercase text-purple-600 block">Horário Início</label>
-                  <input
-                    type="time"
-                    value={startTime}
-                    onChange={(e) => setStartTime(e.target.value)}
-                    className="w-full bg-white border border-purple-200 rounded-xl px-3 py-1.5 outline-none font-bold text-purple-850 text-xs"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black uppercase text-purple-600 block">Horário Término</label>
-                  <input
-                    type="time"
-                    value={endTime}
-                    onChange={(e) => setEndTime(e.target.value)}
-                    className="w-full bg-white border border-purple-200 rounded-xl px-3 py-1.5 outline-none font-bold text-purple-850 text-xs"
-                  />
-                </div>
+              <div className={endDateStr ? "grid grid-cols-1 gap-3.5" : "grid grid-cols-1 md:grid-cols-3 gap-3.5"}>
+                {!endDateStr && (
+                  <>
+                    {/* Time pickers */}
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black uppercase text-purple-600 block">Horário Início</label>
+                      <input
+                        type="time"
+                        value={startTime}
+                        onChange={(e) => setStartTime(e.target.value)}
+                        className="w-full bg-white border border-purple-200 rounded-xl px-3 py-1.5 outline-none font-bold text-purple-850 text-xs"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black uppercase text-purple-600 block">Horário Término</label>
+                      <input
+                        type="time"
+                        value={endTime}
+                        onChange={(e) => setEndTime(e.target.value)}
+                        className="w-full bg-white border border-purple-200 rounded-xl px-3 py-1.5 outline-none font-bold text-purple-850 text-xs"
+                      />
+                    </div>
+                  </>
+                )}
                 <div className="space-y-1">
                   <label className="text-[10px] font-black uppercase text-purple-600 block">Status da Ação</label>
                   <select
@@ -1337,52 +1341,81 @@ export default function DayActivityModal({
 
               {/* Edit Mode Save Buttons (Compact size!) */}
               <div className="flex gap-1.5 justify-end pt-2">
-                {!isCreatingNew && (
+                {seriesCount > 0 && !isCreatingNew ? (
                   <>
                     <button
                       type="button"
                       onClick={() => handleDelete(false)}
-                      className="mr-auto px-2.5 py-1 rounded-lg bg-red-50 hover:bg-red-100 border border-red-200 text-red-700 font-bold text-[11px] flex items-center gap-1 transition"
+                      className="mr-auto px-4 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 border border-rose-200 font-extrabold text-[11px] text-rose-700 flex items-center gap-1 shadow-xs transition cursor-pointer"
+                      title="Excluir este evento ou a série"
                     >
-                      <Trash2 className="w-3 h-3" /> Excluir Único
+                      <Trash2 className="w-3 h-3 text-rose-600" /> Excluir
                     </button>
-                    {seriesCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => handleSave(false)}
+                      className="px-4 py-1.5 rounded-lg border border-purple-250 hover:bg-purple-100 font-extrabold text-[11px] text-purple-850 transition cursor-pointer"
+                    >
+                      Salvar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSave(true)}
+                      className="px-4 py-1.5 rounded-lg bg-purple-700 hover:bg-purple-600 font-extrabold text-[11px] text-white flex items-center gap-1 shadow-md transition cursor-pointer"
+                    >
+                      <Save className="w-3 h-3" /> Salvar em série
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    {!isCreatingNew && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(false)}
+                          className="mr-auto px-2.5 py-1 rounded-lg bg-red-50 hover:bg-red-100 border border-red-200 text-red-700 font-bold text-[11px] flex items-center gap-1 transition"
+                        >
+                          <Trash2 className="w-3 h-3" /> Excluir Único
+                        </button>
+                        {seriesCount > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => handleDelete(true)}
+                            className="px-2.5 py-1 rounded-lg bg-red-100/50 hover:bg-red-200 border border-red-300 text-red-800 font-extrabold text-[10px] flex items-center gap-1 transition"
+                          >
+                            <Trash2 className="w-3 h-3" /> Excluir Série 
+                          </button>
+                        )}
+                      </>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsEditing(false);
+                        setIsCreatingNew(false);
+                      }}
+                      className="px-2.5 py-1 rounded-lg border border-purple-250 hover:bg-purple-150 font-bold text-[11px] text-purple-850 transition"
+                    >
+                      Cancelar
+                    </button>
+                    {seriesCount > 0 && !isCreatingNew && (
                       <button
                         type="button"
-                        onClick={() => handleDelete(true)}
-                        className="px-2.5 py-1 rounded-lg bg-red-100/50 hover:bg-red-200 border border-red-300 text-red-800 font-extrabold text-[10px] flex items-center gap-1 transition"
+                        onClick={() => handleSave(true)}
+                        className="px-3 py-1 rounded-lg bg-orange-600 hover:bg-orange-500 text-white font-extrabold text-[11px] flex items-center gap-1 shadow transition"
                       >
-                        <Trash2 className="w-3 h-3" /> Excluir Série 
+                        <Save className="w-3 h-3" /> Toda Série
                       </button>
                     )}
+                    <button
+                      type="button"
+                      onClick={() => handleSave(false)}
+                      className="px-3 py-1 rounded-lg bg-purple-700 hover:bg-purple-600 text-white font-extrabold text-[11px] flex items-center gap-1 shadow transition"
+                    >
+                      <Save className="w-3 h-3" /> {seriesCount > 0 && !isCreatingNew ? 'Só Este' : 'Gravar'}
+                    </button>
                   </>
                 )}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsEditing(false);
-                    setIsCreatingNew(false);
-                  }}
-                  className="px-2.5 py-1 rounded-lg border border-purple-250 hover:bg-purple-150 font-bold text-[11px] text-purple-850 transition"
-                >
-                  Cancelar
-                </button>
-                {seriesCount > 0 && !isCreatingNew && (
-                  <button
-                    type="button"
-                    onClick={() => handleSave(true)}
-                    className="px-3 py-1 rounded-lg bg-orange-600 hover:bg-orange-500 text-white font-extrabold text-[11px] flex items-center gap-1 shadow transition"
-                  >
-                    <Save className="w-3 h-3" /> Toda Série
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => handleSave(false)}
-                  className="px-3 py-1 rounded-lg bg-purple-700 hover:bg-purple-600 text-white font-extrabold text-[11px] flex items-center gap-1 shadow transition"
-                >
-                  <Save className="w-3 h-3" /> {seriesCount > 0 && !isCreatingNew ? 'Só Este' : 'Gravar'}
-                </button>
               </div>
             </div>
           ) : (
