@@ -509,6 +509,7 @@ export default function App() {
   const [currentDate, setCurrentDate] = useState<Date>(new Date(2026, 5, 6)); // Default June 2026
   const [user, setUser] = useState<User | null>(null);
   const [needsAuth, setNeedsAuth] = useState(false);
+  const [authResolved, setAuthResolved] = useState(false);
   const [accessToken, setAccessToken] = useState<string | null>(null);
   
   // Mobile and view optimization states
@@ -571,6 +572,7 @@ export default function App() {
         setUser(currentUser);
         setAccessToken(token);
         setNeedsAuth(false);
+        setAuthResolved(true);
         addLog(`Conectado no Google como: ${currentUser.displayName}`);
       },
       () => {
@@ -578,6 +580,7 @@ export default function App() {
         setAccessToken(null);
         const wasConnected = sessionStorage.getItem('_g_connected');
         setNeedsAuth(wasConnected === 'true');
+        setAuthResolved(true);
       }
     );
 
@@ -603,6 +606,20 @@ export default function App() {
       let cloudCachedSettings: any = null;
       const unsubSettings = subscribeToSettings(user.uid, (settings) => {
         cloudCachedSettings = settings;
+        if (settings) {
+           let updated = false;
+           if (settings.saved_custom_catholic_movements) {
+             localStorage.setItem('saved_custom_catholic_movements', settings.saved_custom_catholic_movements);
+             updated = true;
+           }
+           if (settings.catholic_movement_colors_maria) {
+             localStorage.setItem('catholic_movement_colors_maria', settings.catholic_movement_colors_maria);
+             updated = true;
+           }
+           if (updated) {
+             window.dispatchEvent(new Event('customMovementsChanged'));
+           }
+        }
       });
 
       const unsubscribe = subscribeToMissions(user.uid, (cloudMissions) => {
@@ -659,15 +676,6 @@ export default function App() {
           toUpload.forEach(m => {
             uploadMission(user.uid, m).catch(console.error);
           });
-          
-          // settings
-          if (cloudCachedSettings?.saved_custom_catholic_movements) {
-            localStorage.setItem('saved_custom_catholic_movements', cloudCachedSettings.saved_custom_catholic_movements);
-          }
-          if (cloudCachedSettings?.catholic_movement_colors_maria) {
-            localStorage.setItem('catholic_movement_colors_maria', cloudCachedSettings.catholic_movement_colors_maria);
-          }
-          window.dispatchEvent(new Event('customMovementsChanged'));
 
           addLog(`Sincronizado inicial! Dados atualizados com a nuvem.`);
         } else {
@@ -1621,6 +1629,51 @@ export default function App() {
 
   const pendingCount = missions.filter((m) => !m.synced && m.dateStr).length;
 
+  if (!authResolved) {
+    return (
+      <div className="min-h-screen bg-[#FCFAF5] flex items-center justify-center font-sans">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-700"></div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-[#FCFAF5] flex items-center justify-center p-4 font-sans relative overflow-hidden">
+        {/* Background blobs */}
+        <div className="absolute top-[-10%] left-[-10%] w-96 h-96 bg-purple-200/50 rounded-full blur-3xl" />
+        <div className="absolute bottom-[-10%] right-[-10%] w-96 h-96 bg-indigo-200/50 rounded-full blur-3xl" />
+        
+        <div className="bg-white/80 backdrop-blur-xl border border-purple-100 rounded-3xl p-8 max-w-md w-full shadow-2xl relative z-10 flex flex-col items-center text-center space-y-6">
+          <div className="w-16 h-16 bg-gradient-to-tr from-purple-700 to-indigo-600 rounded-2xl flex items-center justify-center shadow-lg shadow-purple-900/20 mb-2">
+            <Church className="w-8 h-8 text-white" />
+          </div>
+          
+          <div className="space-y-2">
+            <h1 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Eu Agenda Missionária</h1>
+            <p className="text-sm text-slate-600">
+              Faça login para criar, acessar e sincronizar seus eventos e missões católicas em todos os seus dispositivos.
+            </p>
+          </div>
+
+          <button
+            onClick={handleGoogleLogin}
+            className="w-full bg-white border border-slate-200 hover:bg-slate-50 text-slate-800 font-bold py-3 px-4 rounded-xl shadow-sm flex items-center justify-center gap-3 transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+          >
+            <svg className="w-5 h-5" viewBox="0 0 24 24">
+              <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
+              <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
+              <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
+              <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
+              <path d="M1 1h22v22H1z" fill="none" />
+            </svg>
+            Continuar com Google
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#FCFAF5] text-slate-800 flex flex-col font-sans selection:bg-purple-200">
       
@@ -1659,37 +1712,26 @@ export default function App() {
               </button>
             )}
 
-            {user ? (
-              <div className="flex items-center bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-xl p-1.5 pr-3 text-xs gap-2 transition max-w-sm">
-                {user.photoURL ? (
-                  <img src={user.photoURL} alt={user.displayName || ''} className="w-6.5 h-6.5 rounded-full object-cover" />
-                ) : (
-                  <div className="w-6.5 h-6.5 bg-purple-100 text-purple-800 font-bold rounded-full flex items-center justify-center">
-                    {user.displayName?.[0]}
-                  </div>
-                )}
-                <div className="truncate shrink max-w-[120px]">
-                  <p className="font-extrabold text-purple-900 leading-none truncate">{user.displayName}</p>
-                  <span className="text-[9px] text-purple-400 font-bold">agenda synced</span>
+            <div className="flex items-center bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-xl p-1.5 pr-3 text-xs gap-2 transition max-w-sm">
+              {user.photoURL ? (
+                <img src={user.photoURL} alt={user.displayName || ''} className="w-6.5 h-6.5 rounded-full object-cover" />
+              ) : (
+                <div className="w-6.5 h-6.5 bg-purple-100 text-purple-800 font-bold rounded-full flex items-center justify-center">
+                  {user.displayName?.[0]}
                 </div>
-                <button
-                  onClick={handleLogout}
-                  className="p-1 hover:bg-purple-200 text-purple-400 hover:text-red-600 rounded transition shrink-0 ml-1"
-                  title="Desconectar conta Google"
-                >
-                  <LogOut className="w-3.5 h-3.5" />
-                </button>
+              )}
+              <div className="truncate shrink max-w-[120px]">
+                <p className="font-extrabold text-purple-900 leading-none truncate">{user.displayName}</p>
+                <span className="text-[9px] text-purple-400 font-bold">agenda synced</span>
               </div>
-            ) : (
               <button
-                onClick={handleGoogleLogin}
-                className="text-[10px] py-1 px-2.5 border border-purple-200 hover:bg-purple-150 cursor-pointer flex items-center gap-1.5 rounded-lg bg-white text-purple-800 font-bold"
-                id="google-calendar-signin-btn"
+                onClick={handleLogout}
+                className="p-1 hover:bg-purple-200 text-purple-400 hover:text-red-600 rounded transition shrink-0 ml-1"
+                title="Desconectar conta Google"
               >
-                <Globe className="w-3.5 h-3.5 text-purple-400" />
-                Sincronizar Google Agenda
+                <LogOut className="w-3.5 h-3.5" />
               </button>
-            )}
+            </div>
           </div>
         </div>
       </header>
