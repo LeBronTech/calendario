@@ -679,8 +679,15 @@ export default function App() {
 
           addLog(`Sincronizado inicial! Dados atualizados com a nuvem.`);
         } else {
-          setMissions(cloudMissions);
-          localStorage.setItem('missions_db_maria', JSON.stringify(cloudMissions));
+          setSyncPromptData((prev) => {
+             if (prev !== null) {
+                return { ...prev, cloudMissions };
+             } else {
+                setMissions(cloudMissions);
+                localStorage.setItem('missions_db_maria', JSON.stringify(cloudMissions));
+                return null;
+             }
+          });
         }
       });
 
@@ -910,6 +917,7 @@ export default function App() {
     const { cloudMissions, cloudSettings } = syncPromptData;
     
     if (choice === 'cloud') {
+      setSyncPromptData(null);
       setMissions(cloudMissions);
       localStorage.setItem('missions_db_maria', JSON.stringify(cloudMissions));
       
@@ -923,9 +931,11 @@ export default function App() {
       addLog('Sincronização: Dados da nuvem substituíram os locais.');
       
     } else if (choice === 'local') {
+      setSyncPromptData(null);
       await handleForceSyncAllToCloud();
       
     } else if (choice === 'merge') {
+      setSyncPromptData(null);
       let currentLocal = [...missions]; // Assume missions has local cache because it was initialized that way
       const cloudIds = new Set(cloudMissions.map((m) => m.id));
       const merged = [...cloudMissions];
@@ -941,13 +951,13 @@ export default function App() {
       setMissions(merged);
       localStorage.setItem('missions_db_maria', JSON.stringify(merged));
       
-      for (const m of toUpload) { // Wait for them safely
-         await uploadMission(user.uid, m).catch(console.error);
-      }
+      // Do the upload asynchronously without waiting to avoid locking
+      toUpload.forEach(m => {
+        uploadMission(user.uid, m).catch(console.error);
+      });
+      
       addLog('Sincronização: Mesclagem concluída.');
     }
-    
-    setSyncPromptData(null);
   };
 
   // Google Calendar Sync loop
