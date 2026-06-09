@@ -108,6 +108,17 @@ const getPortugueseDayLabel = (dateStr: string): string => {
   }
 };
 
+// Convert time HH:MM to numerical minutes of the day (0 to 1440)
+const timeToMins = (timeStr?: string): number => {
+  if (!timeStr) return 0;
+  const parts = timeStr.split(':');
+  if (parts.length < 2) return 0;
+  const h = parseInt(parts[0], 10);
+  const m = parseInt(parts[1], 10);
+  if (isNaN(h) || isNaN(m)) return 0;
+  return h * 60 + m;
+};
+
 export default function DayActivityModal({
   isOpen,
   onClose,
@@ -132,19 +143,15 @@ export default function DayActivityModal({
         }
       }
 
-      // Resolve daily 24h boundaries in case of multi-day/overnight durations
-      const effEndDate = getEffectiveEndDate(m);
-      if (m.dateStr !== effEndDate) {
+      // Resolve daily 24h boundaries ONLY for true overnight events spanning a midnight boundary
+      const isOvernight = m.startTime && m.endTime && timeToMins(m.endTime) < timeToMins(m.startTime);
+      if (isOvernight && (!m.dailySchedules || m.dailySchedules.length === 0)) {
         if (selectedDay === m.dateStr) {
           // Starts on this day, continues into the next day (ends at 24:00)
           resolvedEnd = '24:00';
-        } else if (selectedDay === effEndDate) {
+        } else if (selectedDay === getEffectiveEndDate(m)) {
           // Ends on this day, started on a previous day (starts at 00:00)
           resolvedStart = '00:00';
-        } else if (selectedDay > m.dateStr && selectedDay < effEndDate) {
-          // Entirely intermediate day (covers 00:00 to 24:00)
-          resolvedStart = '00:00';
-          resolvedEnd = '24:00';
         }
       }
 
@@ -154,17 +161,6 @@ export default function DayActivityModal({
         endTime: resolvedEnd,
       };
     });
-
-  // Convert time HH:MM to numerical minutes of the day (0 to 1440)
-  const timeToMins = (timeStr?: string): number => {
-    if (!timeStr) return 0;
-    const parts = timeStr.split(':');
-    if (parts.length < 2) return 0;
-    const h = parseInt(parts[0], 10);
-    const m = parseInt(parts[1], 10);
-    if (isNaN(h) || isNaN(m)) return 0;
-    return h * 60 + m;
-  };
 
   const isEventPast = (m: Mission | undefined | null): boolean => {
     if (!m || m.status === 'backlog' || !m.dateStr || !m.endTime) return false;
