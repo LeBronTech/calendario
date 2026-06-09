@@ -11,7 +11,10 @@ import {
   LogOut,
   Bell,
   AlertTriangle,
-  Award
+  Award,
+  Layers,
+  RefreshCw,
+  Upload
 } from 'lucide-react';
 import { CatholicMovement, Mission } from './types';
 import { MOVEMENT_DATA, getMovementStyle } from './utils/catholicData';
@@ -27,7 +30,7 @@ import RetrospectivaView from './components/RetrospectivaView';
 
 // Auth Imports
 import { googleSignIn, logout, initAuth } from './utils/firebaseAuth';
-import { downloadMissions, uploadMission, removeMission, subscribeToMissions, recoverLostMissions } from './utils/firebaseDb';
+import { downloadMissions, uploadMission, removeMission, subscribeToMissions, recoverLostMissions, uploadSettings, subscribeToSettings } from './utils/firebaseDb';
 import { User } from 'firebase/auth';
 
 const DEFAULT_MISSIONS: Mission[] = [
@@ -502,6 +505,7 @@ export const generatePreceitoEvents2026 = (): Mission[] => {
 
 export default function App() {
   const [missions, setMissions] = useState<Mission[]>([]);
+  const [syncPromptData, setSyncPromptData] = useState<{ cloudMissions: Mission[], cloudSettings?: any } | null>(null);
   const [currentDate, setCurrentDate] = useState<Date>(new Date(2026, 5, 6)); // Default June 2026
   const [user, setUser] = useState<User | null>(null);
   const [needsAuth, setNeedsAuth] = useState(false);
@@ -596,6 +600,11 @@ export default function App() {
       }).catch(() => {});
       
       let initialSyncDone = false;
+      let cloudCachedSettings: any = null;
+      const unsubSettings = subscribeToSettings(user.uid, (settings) => {
+        cloudCachedSettings = settings;
+      });
+
       const unsubscribe = subscribeToMissions(user.uid, (cloudMissions) => {
         if (!initialSyncDone) {
           initialSyncDone = true;
@@ -619,6 +628,20 @@ export default function App() {
             }
           });
           
+          const hasMeaningfulLocal = currentLocal.some(m => !m.id.startsWith('seed-') && !m.id.startsWith('preceito-') && !m.id.startsWith('segueme-'));
+          
+          // Se tiver dados na nuvem E dados locais (além das amostras), perguntar qual usar
+          if (cloudMissions.length > 0 && hasMeaningfulLocal) {
+             const localIds = new Set(currentLocal.map(m => m.id));
+             const missingInCloud = currentLocal.filter(m => !cloudMissions.find(cm => cm.id === m.id));
+             const missingInLocal = cloudMissions.filter(cm => !localIds.has(cm.id));
+             
+             if (missingInCloud.length > 0 || missingInLocal.length > 0) {
+               setSyncPromptData({ cloudMissions, cloudSettings: cloudCachedSettings });
+               return; // Skip auto resolving
+             }
+          }
+          
           const cloudIds = new Set(cloudMissions.map((m) => m.id));
           const merged = [...cloudMissions];
           const toUpload: Mission[] = [];
@@ -637,6 +660,15 @@ export default function App() {
             uploadMission(user.uid, m).catch(console.error);
           });
           
+          // settings
+          if (cloudCachedSettings?.saved_custom_catholic_movements) {
+            localStorage.setItem('saved_custom_catholic_movements', cloudCachedSettings.saved_custom_catholic_movements);
+          }
+          if (cloudCachedSettings?.catholic_movement_colors_maria) {
+            localStorage.setItem('catholic_movement_colors_maria', cloudCachedSettings.catholic_movement_colors_maria);
+          }
+          window.dispatchEvent(new Event('customMovementsChanged'));
+
           addLog(`Sincronizado inicial! Dados atualizados com a nuvem.`);
         } else {
           setMissions(cloudMissions);
@@ -644,7 +676,10 @@ export default function App() {
         }
       });
 
-      return () => unsubscribe();
+      return () => {
+        unsubscribe();
+        unsubSettings();
+      };
     }
   }, [user]);
 
@@ -841,6 +876,70 @@ export default function App() {
       }
       return null;
     }
+  };
+
+  const handleForceSyncAllToCloud = async () => {
+    if (!user) return;
+    addLog('Sincronizando todos os dados locais com a nuvem...');
+    for (const m of missions) {
+      await uploadMission(user.uid, m);
+    }
+    
+    // settings
+    const savedCustom = localStorage.getItem('saved_custom_catholic_movements');
+    const colorsObj = localStorage.getItem('catholic_movement_colors_maria');
+    const settingsPayload: any = {};
+    if (savedCustom) settingsPayload.saved_custom_catholic_movements = savedCustom;
+    if (colorsObj) settingsPayload.catholic_movement_colors_maria = colorsObj;
+    await uploadSettings(user.uid, settingsPayload);
+    
+    addLog('Sincronização completa. Dados na nuvem e locais estão idênticos.');
+  };
+
+  const handleSyncResolution = async (choice: 'cloud' | 'local' | 'merge') => {
+    if (!syncPromptData || !user) return;
+    
+    const { cloudMissions, cloudSettings } = syncPromptData;
+    
+    if (choice === 'cloud') {
+      setMissions(cloudMissions);
+      localStorage.setItem('missions_db_maria', JSON.stringify(cloudMissions));
+      
+      if (cloudSettings?.saved_custom_catholic_movements) {
+        localStorage.setItem('saved_custom_catholic_movements', cloudSettings.saved_custom_catholic_movements);
+      }
+      if (cloudSettings?.catholic_movement_colors_maria) {
+        localStorage.setItem('catholic_movement_colors_maria', cloudSettings.catholic_movement_colors_maria);
+      }
+      window.dispatchEvent(new Event('customMovementsChanged'));
+      addLog('Sincronização: Dados da nuvem substituíram os locais.');
+      
+    } else if (choice === 'local') {
+      await handleForceSyncAllToCloud();
+      
+    } else if (choice === 'merge') {
+      let currentLocal = [...missions]; // Assume missions has local cache because it was initialized that way
+      const cloudIds = new Set(cloudMissions.map((m) => m.id));
+      const merged = [...cloudMissions];
+      const toUpload: Mission[] = [];
+      
+      currentLocal.forEach((lm) => {
+        if (!cloudIds.has(lm.id)) {
+          merged.push(lm);
+          toUpload.push(lm);
+        }
+      });
+      
+      setMissions(merged);
+      localStorage.setItem('missions_db_maria', JSON.stringify(merged));
+      
+      for (const m of toUpload) { // Wait for them safely
+         await uploadMission(user.uid, m).catch(console.error);
+      }
+      addLog('Sincronização: Mesclagem concluída.');
+    }
+    
+    setSyncPromptData(null);
   };
 
   // Google Calendar Sync loop
@@ -1550,6 +1649,16 @@ export default function App() {
 
           <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto justify-end">
             {/* Google Sync and Login button widgets */}
+            {user && (
+              <button
+                onClick={handleForceSyncAllToCloud}
+                className="text-[10px] py-1.5 px-3 border border-indigo-200 hover:bg-indigo-50 cursor-pointer flex items-center gap-1.5 rounded-lg bg-white text-indigo-800 font-black shadow-3xs hover:shadow transition"
+              >
+                <Globe className="w-3.5 h-3.5 text-indigo-500" />
+                Forçar Sincronização
+              </button>
+            )}
+
             {user ? (
               <div className="flex items-center bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-xl p-1.5 pr-3 text-xs gap-2 transition max-w-sm">
                 {user.photoURL ? (
@@ -1584,6 +1693,61 @@ export default function App() {
           </div>
         </div>
       </header>
+      
+      {/* Sync Prompt Modal */}
+      {syncPromptData && (
+        <div className="fixed inset-0 bg-blue-950/60 backdrop-blur-sm flex items-center justify-center p-4 z-[90]">
+          <div className="bg-white rounded-2xl border-2 border-indigo-200 shadow-2xl w-full max-w-md p-5 space-y-4 animate-scale-up">
+            <h2 className="text-lg font-black text-indigo-950 flex items-center gap-2">
+              <RefreshCw className="w-5 h-5 text-indigo-600" />
+              Sincronização Necessária
+            </h2>
+            <p className="text-xs text-slate-600 leading-relaxed font-medium">
+              Encontramos dados diferentes salvos na Nuvem (outro dispositivo) e no seu Navegador atual. Qual versão você deseja usar?
+            </p>
+            <div className="space-y-2 mt-4">
+              <button
+                onClick={() => handleSyncResolution('cloud')}
+                className="w-full text-left p-3 rounded-xl border border-blue-200 bg-blue-50/50 hover:bg-blue-100 flex items-start gap-3 transition cursor-pointer group"
+              >
+                <div className="p-2 bg-blue-100 rounded-lg group-hover:bg-blue-200 text-blue-700">
+                  <Globe className="w-4 h-4" />
+                </div>
+                <div>
+                  <span className="block text-xs font-extrabold text-blue-900">Usar Dados da Nuvem</span>
+                  <span className="block text-[10px] text-blue-700">Puxa os dados do outro dispositivo e substitui os dados deste navegador.</span>
+                </div>
+              </button>
+              
+              <button
+                onClick={() => handleSyncResolution('local')}
+                className="w-full text-left p-3 rounded-xl border border-emerald-200 bg-emerald-50/50 hover:bg-emerald-100 flex items-start gap-3 transition cursor-pointer group"
+              >
+                <div className="p-2 bg-emerald-100 rounded-lg group-hover:bg-emerald-200 text-emerald-700">
+                  <Upload className="w-4 h-4" />
+                </div>
+                <div>
+                  <span className="block text-xs font-extrabold text-emerald-900">Usar Dados do Navegador Atual</span>
+                  <span className="block text-[10px] text-emerald-700">Envia os dados atuais deste navegador para a nuvem (sobrescrevendo o outro).</span>
+                </div>
+              </button>
+              
+              <button
+                onClick={() => handleSyncResolution('merge')}
+                className="w-full text-left p-3 rounded-xl border border-purple-200 bg-purple-50/50 hover:bg-purple-100 flex items-start gap-3 transition cursor-pointer group"
+              >
+                <div className="p-2 bg-purple-100 rounded-lg group-hover:bg-purple-200 text-purple-700">
+                  <Layers className="w-4 h-4" />
+                </div>
+                <div>
+                  <span className="block text-xs font-extrabold text-purple-900">Mesclar Tudo (Recomendado)</span>
+                  <span className="block text-[10px] text-purple-700">Mantém todos os eventos juntando os dois.</span>
+                </div>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Premium Main Section Switcher */}
       <div className="max-w-7xl w-full mx-auto px-4 md:px-6 mt-4">

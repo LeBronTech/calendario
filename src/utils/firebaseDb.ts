@@ -174,6 +174,28 @@ export function subscribeToMissions(userId: string, onUpdate: (missions: Mission
   });
 }
 
+// Subscribe to user'settings
+export function subscribeToSettings(userId: string, onUpdate: (settings: any) => void): () => void {
+  const path = `users/${userId}`;
+  return onSnapshot(doc(db, path), (docSnap) => {
+    if (docSnap.exists()) {
+      onUpdate(docSnap.data());
+    }
+  }, (error) => {
+    handleFirestoreError(error, OperationType.GET, path);
+  });
+}
+
+export async function uploadSettings(userId: string, settings: any): Promise<void> {
+  const path = `users/${userId}`;
+  try {
+    const cleaned = JSON.parse(JSON.stringify(settings));
+    await setDoc(doc(db, path), cleaned, { merge: true });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
 // Save/Update mission in Firestore
 export async function uploadMission(userId: string, mission: Mission): Promise<void> {
   const path = `users/${userId}/missions`;
