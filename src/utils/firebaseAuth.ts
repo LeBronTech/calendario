@@ -26,7 +26,7 @@ provider.addScope('https://www.googleapis.com/auth/calendar.readonly');
 
 // Cache the access token in memory / local storage
 let cachedAccessToken: string | null = typeof window !== 'undefined' ? localStorage.getItem('_cached_google_token') : null;
-let isSigningIn = false;
+let signInPromise: Promise<{ user: User; accessToken: string } | null> | null = null;
 
 // Initialize auth listener
 export const initAuth = (
@@ -51,26 +51,33 @@ export const initAuth = (
 
 // Start Google sign-in
 export const googleSignIn = async (): Promise<{ user: User; accessToken: string } | null> => {
-  try {
-    isSigningIn = true;
-    const result = await signInWithPopup(auth, provider);
-    const credential = GoogleAuthProvider.credentialFromResult(result);
-    if (!credential?.accessToken) {
-      throw new Error('Não foi possível obter o token de acesso do Google.');
-    }
-
-    cachedAccessToken = credential.accessToken;
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('_cached_google_token', credential.accessToken);
-      sessionStorage.setItem('_g_connected', 'true');
-    }
-    return { user: result.user, accessToken: cachedAccessToken };
-  } catch (error: any) {
-    console.error('Erro de login no Google:', error);
-    throw error;
-  } finally {
-    isSigningIn = false;
+  if (signInPromise) {
+    return signInPromise;
   }
+
+  signInPromise = (async () => {
+    try {
+      const result = await signInWithPopup(auth, provider);
+      const credential = GoogleAuthProvider.credentialFromResult(result);
+      if (!credential?.accessToken) {
+        throw new Error('Não foi possível obter o token de acesso do Google.');
+      }
+
+      cachedAccessToken = credential.accessToken;
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('_cached_google_token', credential.accessToken);
+        sessionStorage.setItem('_g_connected', 'true');
+      }
+      return { user: result.user, accessToken: cachedAccessToken };
+    } catch (error: any) {
+      console.error('Erro de login no Google:', error);
+      throw error;
+    } finally {
+      signInPromise = null;
+    }
+  })();
+  
+  return signInPromise;
 };
 
 // Retrieve in-memory token

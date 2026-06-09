@@ -506,6 +506,8 @@ export const generatePreceitoEvents2026 = (): Mission[] => {
 export default function App() {
   const [missions, setMissions] = useState<Mission[]>([]);
   const [syncPromptData, setSyncPromptData] = useState<{ cloudMissions: Mission[], cloudSettings?: any } | null>(null);
+  const [isSyncingUser, setIsSyncingUser] = useState(false);
+  const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [currentDate, setCurrentDate] = useState<Date>(new Date(2026, 5, 6)); // Default June 2026
   const [user, setUser] = useState<User | null>(null);
   const [needsAuth, setNeedsAuth] = useState(false);
@@ -895,68 +897,85 @@ export default function App() {
 
   const handleForceSyncAllToCloud = async () => {
     if (!user) return;
+    setIsSyncingUser(true);
     addLog('Sincronizando todos os dados locais com a nuvem...');
-    for (const m of missions) {
-      await uploadMission(user.uid, m);
+    try {
+      for (const m of missions) {
+        await uploadMission(user.uid, m);
+      }
+      
+      // settings
+      const savedCustom = localStorage.getItem('saved_custom_catholic_movements');
+      const colorsObj = localStorage.getItem('catholic_movement_colors_maria');
+      const settingsPayload: any = {};
+      if (savedCustom) settingsPayload.saved_custom_catholic_movements = savedCustom;
+      if (colorsObj) settingsPayload.catholic_movement_colors_maria = colorsObj;
+      await uploadSettings(user.uid, settingsPayload);
+      
+      addLog('Sincronização completa. Dados na nuvem e locais estão idênticos.');
+      alert('Tudo sincronizado na Nuvem com sucesso!');
+    } catch (e) {
+      console.error(e);
+      alert('Erro ao tentar sincronizar os dados na Nuvem. Verifique sua conexão.');
+    } finally {
+      setIsSyncingUser(false);
     }
-    
-    // settings
-    const savedCustom = localStorage.getItem('saved_custom_catholic_movements');
-    const colorsObj = localStorage.getItem('catholic_movement_colors_maria');
-    const settingsPayload: any = {};
-    if (savedCustom) settingsPayload.saved_custom_catholic_movements = savedCustom;
-    if (colorsObj) settingsPayload.catholic_movement_colors_maria = colorsObj;
-    await uploadSettings(user.uid, settingsPayload);
-    
-    addLog('Sincronização completa. Dados na nuvem e locais estão idênticos.');
   };
 
   const handleSyncResolution = async (choice: 'cloud' | 'local' | 'merge') => {
     if (!syncPromptData || !user) return;
+    setIsSyncingUser(true);
     
     const { cloudMissions, cloudSettings } = syncPromptData;
     
-    if (choice === 'cloud') {
-      setSyncPromptData(null);
-      setMissions(cloudMissions);
-      localStorage.setItem('missions_db_maria', JSON.stringify(cloudMissions));
-      
-      if (cloudSettings?.saved_custom_catholic_movements) {
-        localStorage.setItem('saved_custom_catholic_movements', cloudSettings.saved_custom_catholic_movements);
-      }
-      if (cloudSettings?.catholic_movement_colors_maria) {
-        localStorage.setItem('catholic_movement_colors_maria', cloudSettings.catholic_movement_colors_maria);
-      }
-      window.dispatchEvent(new Event('customMovementsChanged'));
-      addLog('Sincronização: Dados da nuvem substituíram os locais.');
-      
-    } else if (choice === 'local') {
-      setSyncPromptData(null);
-      await handleForceSyncAllToCloud();
-      
-    } else if (choice === 'merge') {
-      setSyncPromptData(null);
-      let currentLocal = [...missions]; // Assume missions has local cache because it was initialized that way
-      const cloudIds = new Set(cloudMissions.map((m) => m.id));
-      const merged = [...cloudMissions];
-      const toUpload: Mission[] = [];
-      
-      currentLocal.forEach((lm) => {
-        if (!cloudIds.has(lm.id)) {
-          merged.push(lm);
-          toUpload.push(lm);
+    try {
+      if (choice === 'cloud') {
+        setSyncPromptData(null);
+        setMissions(cloudMissions);
+        localStorage.setItem('missions_db_maria', JSON.stringify(cloudMissions));
+        
+        if (cloudSettings?.saved_custom_catholic_movements) {
+          localStorage.setItem('saved_custom_catholic_movements', cloudSettings.saved_custom_catholic_movements);
         }
-      });
-      
-      setMissions(merged);
-      localStorage.setItem('missions_db_maria', JSON.stringify(merged));
-      
-      // Do the upload asynchronously without waiting to avoid locking
-      toUpload.forEach(m => {
-        uploadMission(user.uid, m).catch(console.error);
-      });
-      
-      addLog('Sincronização: Mesclagem concluída.');
+        if (cloudSettings?.catholic_movement_colors_maria) {
+          localStorage.setItem('catholic_movement_colors_maria', cloudSettings.catholic_movement_colors_maria);
+        }
+        window.dispatchEvent(new Event('customMovementsChanged'));
+        addLog('Sincronização: Dados da nuvem substituíram os locais.');
+        alert('Dados atualizados a partir da Nuvem!');
+        
+      } else if (choice === 'local') {
+        setSyncPromptData(null);
+        await handleForceSyncAllToCloud(); // Shows its own alert
+        
+      } else if (choice === 'merge') {
+        setSyncPromptData(null);
+        let currentLocal = [...missions]; 
+        const cloudIds = new Set(cloudMissions.map((m) => m.id));
+        const merged = [...cloudMissions];
+        const toUpload: Mission[] = [];
+        
+        currentLocal.forEach((lm) => {
+          if (!cloudIds.has(lm.id)) {
+            merged.push(lm);
+            toUpload.push(lm);
+          }
+        });
+        
+        setMissions(merged);
+        localStorage.setItem('missions_db_maria', JSON.stringify(merged));
+        
+        // Wait for all uploads to complete to guarantee safety
+        await Promise.all(toUpload.map(m => uploadMission(user.uid, m)));
+        
+        addLog('Sincronização: Mesclagem concluída.');
+        alert('Dados Locais e em Nuvem Combinados com sucesso!');
+      }
+    } catch (e) {
+      console.error(e);
+      alert('Erro ao tentar recuperar ou misturar os dados.');
+    } finally {
+      setIsSyncingUser(false);
     }
   };
 
@@ -1073,7 +1092,9 @@ export default function App() {
 
   // Auth logins handler
   const handleGoogleLogin = async () => {
+    if (isAuthenticating) return;
     try {
+      setIsAuthenticating(true);
       addLog('Iniciando Google Auth login...');
       const result = await googleSignIn();
       if (result) {
@@ -1089,6 +1110,8 @@ export default function App() {
     } catch (err) {
       console.error(err);
       addLog('Google auth cancelado ou falhou.');
+    } finally {
+      setIsAuthenticating(false);
     }
   };
 
@@ -1668,16 +1691,21 @@ export default function App() {
 
           <button
             onClick={handleGoogleLogin}
-            className="w-full bg-white border border-slate-200 hover:bg-slate-50 text-slate-800 font-bold py-3 px-4 rounded-xl shadow-sm flex items-center justify-center gap-3 transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+            disabled={isAuthenticating}
+            className="w-full bg-white border border-slate-200 hover:bg-slate-50 text-slate-800 font-bold py-3 px-4 rounded-xl shadow-sm flex items-center justify-center gap-3 transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <svg className="w-5 h-5" viewBox="0 0 24 24">
-              <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
-              <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
-              <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
-              <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
-              <path d="M1 1h22v22H1z" fill="none" />
-            </svg>
-            Continuar com Google
+            {isAuthenticating ? (
+              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-slate-800"></div>
+            ) : (
+              <svg className="w-5 h-5" viewBox="0 0 24 24">
+                <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
+                <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
+                <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
+                <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
+                <path d="M1 1h22v22H1z" fill="none" />
+              </svg>
+            )}
+            {isAuthenticating ? 'Carregando...' : 'Continuar com Google'}
           </button>
         </div>
       </div>
@@ -1715,10 +1743,15 @@ export default function App() {
             {user && (
               <button
                 onClick={handleForceSyncAllToCloud}
-                className="text-[10px] py-1.5 px-3 border border-indigo-200 hover:bg-indigo-50 cursor-pointer flex items-center gap-1.5 rounded-lg bg-white text-indigo-800 font-black shadow-3xs hover:shadow transition"
+                disabled={isSyncingUser}
+                className="text-[10px] py-1.5 px-3 border border-indigo-200 hover:bg-indigo-50 cursor-pointer flex items-center gap-1.5 rounded-lg bg-white text-indigo-800 font-black shadow-3xs hover:shadow transition disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <Globe className="w-3.5 h-3.5 text-indigo-500" />
-                Forçar Sincronização
+                {isSyncingUser ? (
+                   <RefreshCw className="w-3.5 h-3.5 text-indigo-500 animate-spin" />
+                ) : (
+                   <Globe className="w-3.5 h-3.5 text-indigo-500" />
+                )}
+                {isSyncingUser ? 'Enviando...' : 'Forçar Sincronização'}
               </button>
             )}
 
@@ -1760,7 +1793,8 @@ export default function App() {
             <div className="space-y-2 mt-4">
               <button
                 onClick={() => handleSyncResolution('cloud')}
-                className="w-full text-left p-3 rounded-xl border border-blue-200 bg-blue-50/50 hover:bg-blue-100 flex items-start gap-3 transition cursor-pointer group"
+                disabled={isSyncingUser}
+                className="w-full text-left p-3 rounded-xl border border-blue-200 bg-blue-50/50 hover:bg-blue-100 flex items-start gap-3 transition cursor-pointer group disabled:opacity-50"
               >
                 <div className="p-2 bg-blue-100 rounded-lg group-hover:bg-blue-200 text-blue-700">
                   <Globe className="w-4 h-4" />
@@ -1773,7 +1807,8 @@ export default function App() {
               
               <button
                 onClick={() => handleSyncResolution('local')}
-                className="w-full text-left p-3 rounded-xl border border-emerald-200 bg-emerald-50/50 hover:bg-emerald-100 flex items-start gap-3 transition cursor-pointer group"
+                disabled={isSyncingUser}
+                className="w-full text-left p-3 rounded-xl border border-emerald-200 bg-emerald-50/50 hover:bg-emerald-100 flex items-start gap-3 transition cursor-pointer group disabled:opacity-50"
               >
                 <div className="p-2 bg-emerald-100 rounded-lg group-hover:bg-emerald-200 text-emerald-700">
                   <Upload className="w-4 h-4" />
@@ -1786,13 +1821,14 @@ export default function App() {
               
               <button
                 onClick={() => handleSyncResolution('merge')}
-                className="w-full text-left p-3 rounded-xl border border-purple-200 bg-purple-50/50 hover:bg-purple-100 flex items-start gap-3 transition cursor-pointer group"
+                disabled={isSyncingUser}
+                className="w-full text-left p-3 rounded-xl border border-purple-200 bg-purple-50/50 hover:bg-purple-100 flex items-start gap-3 transition cursor-pointer group disabled:opacity-50"
               >
                 <div className="p-2 bg-purple-100 rounded-lg group-hover:bg-purple-200 text-purple-700">
-                  <Layers className="w-4 h-4" />
+                  {isSyncingUser ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Layers className="w-4 h-4" />}
                 </div>
                 <div>
-                  <span className="block text-xs font-extrabold text-purple-900">Mesclar Tudo (Recomendado)</span>
+                  <span className="block text-xs font-extrabold text-purple-900">{isSyncingUser ? 'Combinando...' : 'Mesclar Tudo (Recomendado)'}</span>
                   <span className="block text-[10px] text-purple-700">Mantém todos os eventos juntando os dois.</span>
                 </div>
               </button>
