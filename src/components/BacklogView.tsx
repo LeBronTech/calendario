@@ -6,7 +6,7 @@
 import React, { useState } from 'react';
 import { Lightbulb, Plus, Trash2, ArrowRight } from 'lucide-react';
 import { Mission, CatholicMovement } from '../types';
-import { MOVEMENT_DATA, getMovementStyle } from '../utils/catholicData';
+import { getMovementStyle, getSortedMovements } from '../utils/catholicData';
 
 interface BacklogViewProps {
   missions: Mission[];
@@ -57,7 +57,7 @@ export default function BacklogView({
               onChange={(e) => setNewMove(e.target.value as CatholicMovement)}
               className="flex-1 bg-white border border-purple-200 text-purple-800 text-[11px] rounded-lg px-2 py-1 focus:border-purple-600 outline-none font-bold"
             >
-              {Object.entries(MOVEMENT_DATA).map(([key, value]) => (
+              {getSortedMovements().map(([key, value]) => (
                 <option key={key} value={key}>
                   {value.name}
                 </option>

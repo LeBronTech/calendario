@@ -61,7 +61,7 @@ function LogoStack({ dayMissions }: { dayMissions: Mission[] }) {
 
     return (
       <div
-        className={`w-6 h-6 md:w-8 md:h-8 rounded-full border ${style?.borderClass || 'border-purple-300'} ${style?.colorClass || 'bg-purple-500'} text-white flex items-center justify-center font-black text-[9px] md:text-[10px] shadow-xs select-none`}
+        className={`w-6 h-6 md:w-8 md:h-8 rounded-full border ${style?.borderClass || 'border-purple-300'} ${m.cardColor || style?.colorClass || 'bg-purple-500'} text-white flex items-center justify-center font-black text-[9px] md:text-[10px] shadow-xs select-none`}
         title={style?.fullName}
       >
         <span>{label}</span>
@@ -110,7 +110,7 @@ function LogoStack({ dayMissions }: { dayMissions: Mission[] }) {
                   <img src={logoImgUrl} alt={m.movement} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                 </div>
               ) : (
-                <div className={`w-6 h-6 md:w-7.5 md:h-7.5 rounded-full border ${style?.borderClass || 'border-purple-300'} ${style?.colorClass || 'bg-purple-500'} text-white flex items-center justify-center font-black text-[9px] md:text-[10px] shadow-md`}>
+                <div className={`w-6 h-6 md:w-7.5 md:h-7.5 rounded-full border ${style?.borderClass || 'border-purple-300'} ${m.cardColor || style?.colorClass || 'bg-purple-500'} text-white flex items-center justify-center font-black text-[9px] md:text-[10px] shadow-md`}>
                   <span>{label}</span>
                 </div>
               )}
@@ -137,6 +137,21 @@ export default function CalendarView({
   const [touchStartY, setTouchStartY] = useState<number | null>(null);
   const [touchEndY, setTouchEndY] = useState<number | null>(null);
   const [direction, setDirection] = useState(0);
+
+  const [activeSplashMonth, setActiveSplashMonth] = useState<string | null>(null);
+  const isFirstRender = React.useRef(true);
+
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+    setActiveSplashMonth(MONTHS_PT[currentDate.getMonth()]);
+    const timer = setTimeout(() => {
+      setActiveSplashMonth(null);
+    }, 300); // extremely fast display
+    return () => clearTimeout(timer);
+  }, [currentDate]);
 
   const handlePrevMonth = () => {
     setDirection(-1);
@@ -259,13 +274,30 @@ export default function CalendarView({
 
       {/* Calendar Cells Grid */}
       <div className="overflow-hidden relative">
-        <AnimatePresence initial={false} custom={direction} mode="wait">
+        <AnimatePresence>
+          {activeSplashMonth && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.55, y: -5 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 1.5, y: 5 }}
+              transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+              className="absolute inset-0 z-30 flex items-center justify-center pointer-events-none select-none"
+            >
+              <div className="bg-purple-950/90 text-white font-sans font-black text-xl md:text-3.5xl px-6 py-3.5 rounded-2xl shadow-2xl border border-purple-500/40 backdrop-blur-md flex flex-col items-center gap-1">
+                <span className="uppercase tracking-widest text-[8.5px] text-purple-200">Exibindo Mês</span>
+                <span className="drop-shadow-sm font-sans text-purple-100">{activeSplashMonth}</span>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence initial={false} custom={direction} mode="popLayout">
           <motion.div
             key={`${year}-${month}`}
             custom={direction}
             variants={{
               enter: (dir: number) => ({
-                x: dir * 40,
+                x: dir * 35,
                 opacity: 0
               }),
               center: {
@@ -273,18 +305,19 @@ export default function CalendarView({
                 opacity: 1
               },
               exit: (dir: number) => ({
-                x: dir * -40,
-                opacity: 0
+                x: dir * -35,
+                opacity: 0,
+                pointerEvents: 'none'
               })
             }}
             initial="enter"
             animate="center"
             exit="exit"
             transition={{
-              x: { type: 'spring', stiffness: 350, damping: 28 },
-              opacity: { duration: 0.12 }
+              x: { type: 'spring', stiffness: 650, damping: 45 },
+              opacity: { duration: 0.10 }
             }}
-            className="grid grid-cols-7 gap-1 md:gap-1.5"
+            className="grid grid-cols-7 gap-1 md:gap-1.5 w-full"
           >
             {dayCells.map((day, idx) => {
               if (day === null) {
@@ -370,7 +403,7 @@ export default function CalendarView({
                         title={`${m.title} (${m.dateStr} a ${m.endDateStr})`}
                       >
                         <div
-                          className={`w-full h-full ${style?.colorClass || 'bg-purple-600'} ${roundedClass} flex items-center justify-between px-1.5 text-[8px] md:text-[9.5px] font-black text-white hover:opacity-95 active:scale-95 transition relative overflow-hidden`}
+                          className={`w-full h-full ${m.cardColor || style?.colorClass || 'bg-purple-600'} ${roundedClass} flex items-center justify-between px-1.5 text-[8px] md:text-[9.5px] font-black text-white hover:opacity-95 active:scale-95 transition relative overflow-hidden`}
                           style={{
                             backgroundColor: isShalomEvent ? '#047857' : undefined
                           }}
@@ -399,7 +432,7 @@ export default function CalendarView({
                         return (
                           <span
                             key={m.id}
-                            className={`w-1.5 h-1.5 rounded-full ${style?.colorClass || 'bg-purple-400'}`}
+                            className={`w-1.5 h-1.5 rounded-full ${m.cardColor || style?.colorClass || 'bg-purple-400'}`}
                             title={m.title}
                           />
                         );

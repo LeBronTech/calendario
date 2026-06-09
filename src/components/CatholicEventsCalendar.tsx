@@ -27,9 +27,9 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Mission, CatholicMovement } from '../types';
-import { getMovementStyle } from '../utils/catholicData';
+import { getMovementStyle, getSortedMovements } from '../utils/catholicData';
 import { SEEDED_CATHOLIC_EVENTS, CatholicEvent } from '../utils/seededCatholicEvents';
-import { downloadCatholicEvents, uploadCatholicEvent, removeCatholicEvent } from '../utils/firebaseDb';
+import { downloadCatholicEvents, uploadCatholicEvent, removeCatholicEvent, recoverLostCatholicEvents } from '../utils/firebaseDb';
 import { User } from 'firebase/auth';
 
 interface CatholicEventsCalendarProps {
@@ -55,7 +55,25 @@ const TIPO_OPTIONS = [
   { value: 'acampamento', label: '⛺ Acampamento / Fest' },
   { value: 'seminario', label: '📖 Seminário / Formação' },
   { value: 'grupo', label: '🗣️ Grupo de Oração' },
-  { value: 'missa', label: '🍞 Missa Solene' }
+  { value: 'missa', label: '🍞 Missa Solene' },
+  { value: 'reuniao', label: '💼 Reunião' }
+];
+
+const AVAILABLE_COLORS = [
+  { class: 'bg-violet-600', label: 'Roxo Paroquial' },
+  { class: 'bg-amber-500', label: 'Amarelo RCC' },
+  { class: 'bg-orange-500', label: 'Laranja Segue-me' },
+  { class: 'bg-blue-500', label: 'Azul EJNS' },
+  { class: 'bg-indigo-600', label: 'Índigo JSC' },
+  { class: 'bg-emerald-600', label: 'Verde Shalom' },
+  { class: 'bg-green-600', label: 'Verde Claro' },
+  { class: 'bg-red-500', label: 'Vermelho Vicentinos' },
+  { class: 'bg-rose-500', label: 'Rosa EJC' },
+  { class: 'bg-pink-600', label: 'Rosa Intenso' },
+  { class: 'bg-cyan-500', label: 'Ciano Canção Nova' },
+  { class: 'bg-teal-600', label: 'Teal Celestial' },
+  { class: 'bg-slate-700', label: 'Cinza Terço dos Homens' },
+  { class: 'bg-neutral-800', label: 'Preto / Escuro' },
 ];
 
 const isEventOnDate = (event: CatholicEvent, dateStr: string): boolean => {
@@ -114,6 +132,21 @@ export default function CatholicEventsCalendar({
   const [currentDate, setCurrentDate] = useState<Date>(new Date(2026, 5, 6)); // Default June 2026 to align with personal calendar
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
 
+  const [activeSplashMonth, setActiveSplashMonth] = useState<string | null>(null);
+  const isFirstRender = React.useRef(true);
+
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+    setActiveSplashMonth(MONTHS_PT[currentDate.getMonth()]);
+    const timer = setTimeout(() => {
+      setActiveSplashMonth(null);
+    }, 300); // extremely fast display
+    return () => clearTimeout(timer);
+  }, [currentDate]);
+
   // Tabs for Catholic Events: 'month' (with calendar grid) and 'future' (unconfirmed dates)
   const [eventTab, setEventTab] = useState<'month' | 'future'>('month');
   
@@ -146,6 +179,10 @@ export default function CatholicEventsCalendar({
   const [activeSlideIndex, setActiveSlideIndex] = useState(0);
   const [selectedDetailEvent, setSelectedDetailEvent] = useState<CatholicEvent | null>(null);
 
+  // Custom persistent movement colors map
+  const [movementColors, setMovementColors] = useState<Record<string, string>>({});
+  const [selectedColorClass, setSelectedColorClass] = useState<string>('bg-purple-600');
+
   // Editing state
   const [editingEvent, setEditingEvent] = useState<CatholicEvent | null>(null);
 
@@ -154,41 +191,144 @@ export default function CatholicEventsCalendar({
   const [pendingAddEvent, setPendingAddEvent] = useState<CatholicEvent | null>(null);
   const [conflictingEvent, setConflictingEvent] = useState<Mission | null>(null);
 
+  // Load custom movement colors map
+  useEffect(() => {
+    const savedColors = localStorage.getItem('catholic_movement_colors_maria');
+    if (savedColors) {
+      try {
+        setMovementColors(JSON.parse(savedColors));
+      } catch (e) {
+        console.error('Erro ao ler cores de movimentos:', e);
+      }
+    }
+  }, []);
+
+  // Sync selectedColorClass when formMovement or movementColors change
+  useEffect(() => {
+    if (formMovement) {
+      if (editingEvent && formMovement === editingEvent.movement) {
+        if (editingEvent.cardColor) {
+          setSelectedColorClass(editingEvent.cardColor);
+          return;
+        }
+      }
+      const savedColor = movementColors[formMovement];
+      if (savedColor) {
+        setSelectedColorClass(savedColor);
+      } else {
+        const defaultStyle = getMovementStyle(formMovement);
+        setSelectedColorClass(defaultStyle?.colorClass || 'bg-purple-600');
+      }
+    }
+  }, [formMovement, movementColors, editingEvent]);
+
   // Load database
   useEffect(() => {
     const localDb = localStorage.getItem('catholic_events_db_maria');
-    if (localDb) {
-      try {
-        const parsed = JSON.parse(localDb) as CatholicEvent[];
-        // Filter out any cached fictitious events, keeping only user manual ones
-        const filtered = parsed.filter(e => e.id.startsWith('cat-manual-'));
-        setCatholicEvents(filtered);
-        localStorage.setItem('catholic_events_db_maria', JSON.stringify(filtered));
-      } catch (e) {
-        setCatholicEvents([]);
+    const legacyDb = localStorage.getItem('catholic_events_db');
+    const veryLegacyDb = localStorage.getItem('catholic_events');
+
+    let allLoaded: CatholicEvent[] = [];
+    
+    [veryLegacyDb, legacyDb, localDb].forEach(dbStr => {
+      if (dbStr && dbStr !== '[]') {
+        try {
+          const parsed = JSON.parse(dbStr);
+          if (Array.isArray(parsed)) {
+            allLoaded = [...allLoaded, ...parsed];
+          }
+        } catch (e) {}
       }
-    } else {
-      setCatholicEvents([]);
-      localStorage.setItem('catholic_events_db_maria', JSON.stringify([]));
+    });
+
+    let loadedEvents: CatholicEvent[] = [];
+    if (allLoaded.length > 0) {
+      const uniqueEvents = new Map();
+      allLoaded.forEach(e => {
+        if (e && e.id && !uniqueEvents.has(e.id)) {
+          uniqueEvents.set(e.id, e);
+        }
+      });
+      loadedEvents = Array.from(uniqueEvents.values());
     }
+
+    setCatholicEvents(loadedEvents);
+    localStorage.setItem('catholic_events_db_maria', JSON.stringify(loadedEvents));
   }, []);
 
   // Sync with Firestore whenever currentUser is logged in
   useEffect(() => {
     if (currentUser) {
       addLog('Sincronizando calendário geral de eventos com a nuvem...');
+      
+      recoverLostCatholicEvents(currentUser.uid).then((recovered) => {
+        if (recovered.length > 0) {
+           recovered.forEach(e => uploadCatholicEvent(currentUser.uid, e));
+        }
+      }).catch(() => {});
+      
       downloadCatholicEvents(currentUser.uid).then(async (cloudEvents) => {
-        const filteredCloud = cloudEvents.filter(e => e.id.startsWith('cat-manual-'));
-        if (filteredCloud.length === 0) {
-          // Cloud empty, let's backup
-          const filteredLocal = catholicEvents.filter(e => e.id.startsWith('cat-manual-'));
-          for (const ev of filteredLocal) {
+        if (cloudEvents.length === 0) {
+          // Cloud empty, let's backup using the latest from localStorage to avoid stale closures
+          let currentLocal: CatholicEvent[] = [];
+          const localDb = localStorage.getItem('catholic_events_db_maria');
+          const legacyDb = localStorage.getItem('catholic_events_db');
+          const veryLegacyDb = localStorage.getItem('catholic_events');
+
+          [veryLegacyDb, legacyDb, localDb].forEach(dbStr => {
+            if (dbStr && dbStr !== '[]') {
+              try {
+                const parsed = JSON.parse(dbStr);
+                if (Array.isArray(parsed)) {
+                  parsed.forEach(p => {
+                    if (!currentLocal.find(c => c.id === p.id)) {
+                      currentLocal.push(p);
+                    }
+                  });
+                }
+              } catch (e) {}
+            }
+          });
+          
+          for (const ev of currentLocal) {
             await uploadCatholicEvent(currentUser.uid, ev);
           }
           addLog('Eventos locais sincronizados e salvos na nuvem!');
         } else {
-          setCatholicEvents(filteredCloud);
-          localStorage.setItem('catholic_events_db_maria', JSON.stringify(filteredCloud));
+          // Merge to protect any unsynced local changes
+          let currentLocal: CatholicEvent[] = [];
+          const localDb = localStorage.getItem('catholic_events_db_maria');
+          const legacyDb = localStorage.getItem('catholic_events_db');
+          const veryLegacyDb = localStorage.getItem('catholic_events');
+
+          [veryLegacyDb, legacyDb, localDb].forEach(dbStr => {
+            if (dbStr && dbStr !== '[]') {
+              try {
+                const parsed = JSON.parse(dbStr);
+                if (Array.isArray(parsed)) {
+                  parsed.forEach(p => {
+                    if (!currentLocal.find(c => c.id === p.id)) {
+                      currentLocal.push(p);
+                    }
+                  });
+                }
+              } catch (e) {}
+            }
+          });
+          
+          const cloudIds = new Set(cloudEvents.map(e => e.id));
+          const missingFromCloud = currentLocal.filter(e => !cloudIds.has(e.id));
+          
+          const merged = [...cloudEvents, ...missingFromCloud];
+          
+          if (missingFromCloud.length > 0) {
+            for (const ev of missingFromCloud) {
+              await uploadCatholicEvent(currentUser.uid, ev);
+            }
+          }
+          
+          setCatholicEvents(merged);
+          localStorage.setItem('catholic_events_db_maria', JSON.stringify(merged));
           addLog('Catálogo de eventos atualizado da nuvem!');
         }
       }).catch((err) => {
@@ -218,6 +358,7 @@ export default function CatholicEventsCalendar({
     setFormInstagramUrl(event.instagramUrl || '');
     setFormInstagramImgUrl(event.instagramImgUrl || '');
     setFormIsFutureUnconfirmed(!event.dateStr);
+    setSelectedColorClass(event.cardColor || getMovementStyle(event.movement)?.colorClass || 'bg-purple-600');
     setIsAddFormOpen(true);
     
     // Smooth scroll up to the form
@@ -257,6 +398,8 @@ export default function CatholicEventsCalendar({
     setFormEndTime('21:05');
     setEditingEvent(null);
     setIsAddFormOpen(false);
+    const defaultColor = getMovementStyle(formMovement)?.colorClass || 'bg-purple-600';
+    setSelectedColorClass(defaultColor);
   };
 
   const handleCreateCatholicEvent = (e: React.FormEvent) => {
@@ -277,7 +420,8 @@ export default function CatholicEventsCalendar({
         tipo: formTipo,
         city: formCity || 'Geral',
         instagramUrl: formInstagramUrl.trim() || undefined,
-        instagramImgUrl: formInstagramImgUrl.trim() || undefined
+        instagramImgUrl: formInstagramImgUrl.trim() || undefined,
+        cardColor: selectedColorClass
       };
 
       const updatedList = catholicEvents.map((ev) => ev.id === editingEvent.id ? updatedEvent : ev);
@@ -300,7 +444,8 @@ export default function CatholicEventsCalendar({
         tipo: formTipo,
         city: formCity || 'Geral',
         instagramUrl: formInstagramUrl.trim() || undefined,
-        instagramImgUrl: formInstagramImgUrl.trim() || undefined
+        instagramImgUrl: formInstagramImgUrl.trim() || undefined,
+        cardColor: selectedColorClass
       };
 
       const updatedList = [newEvent, ...catholicEvents];
@@ -309,6 +454,13 @@ export default function CatholicEventsCalendar({
         uploadCatholicEvent(currentUser.uid, newEvent).catch(console.error);
       }
       addLog(`Novo evento católico catalogado: ${newEvent.title}`);
+    }
+
+    // Save movement to color class mapping persistently
+    if (formMovement) {
+      const updatedColors = { ...movementColors, [formMovement]: selectedColorClass };
+      setMovementColors(updatedColors);
+      localStorage.setItem('catholic_movement_colors_maria', JSON.stringify(updatedColors));
     }
 
     resetForm();
@@ -334,6 +486,16 @@ export default function CatholicEventsCalendar({
         (pm.endDateStr || '') === (event.endDateStr || '') &&
         pm.startTime === event.startTime
     )?.id;
+  };
+
+  const getEventColor = (event: CatholicEvent): string => {
+    if (movementColors[event.movement]) {
+      return movementColors[event.movement];
+    }
+    if (event.cardColor) {
+      return event.cardColor;
+    }
+    return getMovementStyle(event.movement)?.colorClass || 'bg-rose-700';
   };
 
   // Convert time HH:MM to numerical minutes
@@ -550,7 +712,13 @@ export default function CatholicEventsCalendar({
       {/* Unified action bar containing only the Catalog button */}
       <div className="flex justify-end pt-1">
         <button
-          onClick={() => setIsAddFormOpen(!isAddFormOpen)}
+          onClick={() => {
+            if (isAddFormOpen) {
+              resetForm();
+            } else {
+              setIsAddFormOpen(true);
+            }
+          }}
           className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white text-xs font-extrabold rounded-xl transition shadow flex items-center gap-1.5 cursor-pointer active:scale-95"
         >
           <FolderPlus className="w-4 h-4" />
@@ -600,13 +768,11 @@ export default function CatholicEventsCalendar({
                     onChange={(e) => setFormMovement(e.target.value)}
                     className="w-full bg-white border border-rose-200 px-2.5 py-1.5 rounded-xl outline-none focus:border-rose-700 text-xs text-rose-950 font-bold"
                   >
-                    <option value={CatholicMovement.PAROQUIAL}>⛪ Coordenação Paroquial</option>
-                    <option value={CatholicMovement.RCC}>🔥 Renovação Carismática (RCC)</option>
-                    <option value={CatholicMovement.EJNS}>💙 Jovens de Nossa Senhora (EJNS)</option>
-                    <option value={CatholicMovement.SHALOM}>💚 Comunidade Shalom</option>
-                    <option value={CatholicMovement.VINCENTINOS}>❤️ Vicentinos (SSVP)</option>
-                    <option value={CatholicMovement.CANCAO_NOVA}>🩵 Comunidade Canção Nova</option>
-                    <option value={CatholicMovement.TERCO_HOMENS}>🖤 Terço dos Homens</option>
+                    {getSortedMovements().map(([key, info]) => (
+                      <option key={key} value={key}>
+                        ⛪ {info.name} - {info.fullName}
+                      </option>
+                    ))}
                     <option value="Eventos Gerais">✨ Eventos Gerais / Diocesanos</option>
                   </select>
                 </div>
@@ -625,6 +791,47 @@ export default function CatholicEventsCalendar({
                       </option>
                     ))}
                   </select>
+                </div>
+              </div>
+
+              {/* Escolha de Cor do Card / Movimento */}
+              <div className="bg-white/80 p-3 rounded-xl border border-rose-100 space-y-2">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-1">
+                  <div>
+                    <label className="text-[10px] font-black uppercase text-rose-800 block">🎨 Cor Personalizada do Card / Evento</label>
+                    <span className="text-[9px] text-rose-600 block">
+                      Ao salvar, esta cor será definida como padrão para futuros eventos do movimento <strong className="text-rose-700">"{getMovementStyle(formMovement)?.name || formMovement}"</strong>.
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5 mt-1 sm:mt-0">
+                    <span className="text-[9px] font-black text-rose-800">Visualização do card:</span>
+                    <span className={`text-[9px] text-white uppercase font-black px-2 py-0.5 rounded shadow-xs ${selectedColorClass}`}>
+                      {getMovementStyle(formMovement)?.name || formMovement}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2 pt-1">
+                  {AVAILABLE_COLORS.map((color) => {
+                    const isSelected = selectedColorClass === color.class;
+                    return (
+                      <button
+                        key={color.class}
+                        type="button"
+                        onClick={() => setSelectedColorClass(color.class)}
+                        className={`w-7 h-7 rounded-full ${color.class} border-2 transition-all duration-200 transform hover:scale-110 active:scale-95 relative flex items-center justify-center cursor-pointer ${
+                          isSelected
+                            ? 'border-rose-900 ring-2 ring-rose-300 scale-105 shadow-md'
+                            : 'border-transparent hover:border-gray-300 shadow-3xs'
+                        }`}
+                        title={color.label}
+                      >
+                        {isSelected && (
+                          <span className="text-[10px] text-white">✓</span>
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -998,13 +1205,30 @@ export default function CatholicEventsCalendar({
 
           {/* Monthly grid */}
           <div className="overflow-hidden relative">
-            <AnimatePresence initial={false} custom={direction} mode="wait">
+            <AnimatePresence>
+              {activeSplashMonth && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.55, y: -5 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 1.5, y: 5 }}
+                  transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+                  className="absolute inset-0 z-30 flex items-center justify-center pointer-events-none select-none"
+                >
+                  <div className="bg-rose-950/90 text-white font-sans font-black text-xl md:text-3.5xl px-6 py-3.5 rounded-2xl shadow-2xl border border-rose-500/40 backdrop-blur-md flex flex-col items-center gap-1">
+                    <span className="uppercase tracking-widest text-[8.5px] text-rose-200">Exibindo Mês</span>
+                    <span className="drop-shadow-sm font-sans text-rose-100">{activeSplashMonth}</span>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <AnimatePresence initial={false} custom={direction} mode="popLayout">
               <motion.div
                 key={`${year}-${month}`}
                 custom={direction}
                 variants={{
                   enter: (dir: number) => ({
-                    x: dir * 40,
+                    x: dir * 35,
                     opacity: 0
                   }),
                   center: {
@@ -1012,18 +1236,19 @@ export default function CatholicEventsCalendar({
                     opacity: 1
                   },
                   exit: (dir: number) => ({
-                    x: dir * -40,
-                    opacity: 0
+                    x: dir * -35,
+                    opacity: 0,
+                    pointerEvents: 'none'
                   })
                 }}
                 initial="enter"
                 animate="center"
                 exit="exit"
                 transition={{
-                  x: { type: 'spring', stiffness: 350, damping: 28 },
-                  opacity: { duration: 0.12 }
+                  x: { type: 'spring', stiffness: 650, damping: 45 },
+                  opacity: { duration: 0.10 }
                 }}
-                className="grid grid-cols-7 gap-1.5"
+                className="grid grid-cols-7 gap-1.5 w-full"
               >
                 {dayCells.map((day, idx) => {
                   if (day === null) {
@@ -1076,12 +1301,11 @@ export default function CatholicEventsCalendar({
                       {/* Indicator for Events count */}
                       <div className="flex justify-center flex-wrap gap-0.5 max-h-4 overflow-hidden pt-1">
                         {dayEvents.slice(0, 3).map((e, eidx) => {
-                          const style = getMovementStyle(e.movement);
                           return (
                             <span
                               key={e.id}
                               className={`w-[5px] h-[5px] rounded-full shrink-0 ${
-                                isSelected ? 'bg-rose-300' : style?.colorClass || 'bg-rose-400'
+                                isSelected ? 'bg-rose-300' : getEventColor(e)
                               }`}
                               title={e.title}
                             />
@@ -1181,13 +1405,11 @@ export default function CatholicEventsCalendar({
                 className="bg-rose-50/50 text-rose-900 border border-rose-150 rounded-xl px-2 py-1.5 outline-none font-bold text-[10px]"
               >
                 <option value="all">🛡️ Movimentos (Todos)</option>
-                <option value={CatholicMovement.PAROQUIAL}>⛪ Paroquial</option>
-                <option value={CatholicMovement.RCC}>🔥 RCC</option>
-                <option value={CatholicMovement.EJNS}>💙 EJNS</option>
-                <option value={CatholicMovement.SHALOM}>💚 Shalom</option>
-                <option value={CatholicMovement.VINCENTINOS}>❤️ Vicentinos</option>
-                <option value={CatholicMovement.CANCAO_NOVA}>🩵 Canção Nova</option>
-                <option value={CatholicMovement.TERCO_HOMENS}>🖤 Terço dos Homens</option>
+                {getSortedMovements().map(([key, info]) => (
+                  <option key={key} value={key}>
+                    ⛪ {info.name}
+                  </option>
+                ))}
               </select>
 
               <select
@@ -1266,7 +1488,7 @@ export default function CatholicEventsCalendar({
                       {/* Left: Event Core Data Info */}
                       <div className="space-y-1.5 flex-1 select-text">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className={`text-[9px] text-white uppercase font-black px-1.5 py-0.5 rounded ${style?.colorClass || 'bg-rose-700'}`}>
+                          <span className={`text-[9px] text-white uppercase font-black px-1.5 py-0.5 rounded ${getEventColor(event)}`}>
                             {style?.name || 'Missão'}
                           </span>
                           <span className="text-[9px] bg-rose-100 text-rose-800 font-black uppercase px-2 py-0.5 rounded-full">
@@ -1463,7 +1685,7 @@ export default function CatholicEventsCalendar({
                 {/* Overlaid Badges and Title */}
                 <div className="absolute bottom-4 left-4 right-4 text-white space-y-1 z-10">
                   <div className="flex gap-2 items-center flex-wrap">
-                    <span className={`text-[9px] text-white uppercase font-black px-2 py-0.5 rounded shadow-xs ${style?.colorClass || 'bg-rose-700'}`}>
+                    <span className={`text-[9px] text-white uppercase font-black px-2 py-0.5 rounded shadow-xs ${getEventColor(event)}`}>
                       {style?.name || 'Missão'}
                     </span>
                     <span className="text-[9px] bg-white/20 text-white font-black uppercase backdrop-blur-xs px-2 py-0.5 rounded">

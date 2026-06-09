@@ -54,6 +54,7 @@ export interface Mission {
   materialsNeeded?: string[];
   googleEventId?: string; // Synced with Google Calendar
   synced: boolean;
+  attended?: boolean; // Attended status confirmed by the user for Completed events
   offlineSaved?: boolean;
   createdAt: string;
 
@@ -66,6 +67,7 @@ export interface Mission {
   observation?: string;
   dailySchedules?: DailyTimeConfig[]; // Custom schedules per day for multi-day events
   recurrence?: RecurrenceConfig;
+  cardColor?: string; // Tailwind background color class chosen by user
 }
 
 export interface ChatMessage {

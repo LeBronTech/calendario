@@ -6,7 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Calendar, MapPin, Clock, Save, Bookmark, Instagram, Upload, Trash2, Tag } from 'lucide-react';
 import { Mission, CatholicMovement, DailyTimeConfig, RecurrenceConfig } from '../types';
-import { MOVEMENT_DATA, getMovementStyle } from '../utils/catholicData';
+import { getMovementStyle, getSortedMovements } from '../utils/catholicData';
 
 interface MissionModalProps {
   isOpen: boolean;
@@ -34,6 +34,24 @@ const TIPO_OPTIONS = [
   { value: 'acampamento', label: '⛺ Acampamento' },
   { value: 'seminario', label: '📖 Seminário' },
   { value: 'grupo', label: '🔥 Grupo de Oração' },
+  { value: 'reuniao', label: '💼 Reunião' },
+];
+
+const AVAILABLE_COLORS = [
+  { class: 'bg-violet-600', label: 'Roxo Paroquial' },
+  { class: 'bg-amber-500', label: 'Amarelo RCC' },
+  { class: 'bg-orange-500', label: 'Laranja Segue-me' },
+  { class: 'bg-blue-500', label: 'Azul EJNS' },
+  { class: 'bg-indigo-600', label: 'Índigo JSC' },
+  { class: 'bg-emerald-600', label: 'Verde Shalom' },
+  { class: 'bg-green-600', label: 'Verde Claro' },
+  { class: 'bg-red-500', label: 'Vermelho Vicentinos' },
+  { class: 'bg-rose-500', label: 'Rosa EJC' },
+  { class: 'bg-pink-600', label: 'Rosa Intenso' },
+  { class: 'bg-cyan-500', label: 'Ciano Canção Nova' },
+  { class: 'bg-teal-600', label: 'Teal Celestial' },
+  { class: 'bg-slate-700', label: 'Cinza Terço dos Homens' },
+  { class: 'bg-neutral-800', label: 'Preto / Escuro' },
 ];
 
 const getDatesInRange = (start: string, end?: string): string[] => {
@@ -104,6 +122,38 @@ export default function MissionModal({
   const [customDates, setCustomDates] = useState<string[]>([]);
   const [newCustomDate, setNewCustomDate] = useState('');
 
+  // Color configuration states
+  const [movementColors, setMovementColors] = useState<Record<string, string>>({});
+  const [selectedColorClass, setSelectedColorClass] = useState<string>('bg-purple-600');
+
+  // Load custom movement colors map
+  useEffect(() => {
+    if (isOpen) {
+      const savedColors = localStorage.getItem('catholic_movement_colors_maria');
+      if (savedColors) {
+        try {
+          setMovementColors(JSON.parse(savedColors));
+        } catch (e) {
+          console.error('Erro ao ler cores de movimentos:', e);
+        }
+      }
+    }
+  }, [isOpen]);
+
+  // Sync selectedColorClass when movement, useCustomMovement, customMovementName or movementColors change
+  useEffect(() => {
+    const currentMovement = useCustomMovement ? (customMovementName.trim() || 'Customizado') : movement;
+    if (currentMovement) {
+      const savedColor = movementColors[currentMovement];
+      if (savedColor) {
+        setSelectedColorClass(savedColor);
+      } else {
+        const defaultStyle = getMovementStyle(currentMovement);
+        setSelectedColorClass(defaultStyle?.colorClass || 'bg-purple-600');
+      }
+    }
+  }, [movement, useCustomMovement, customMovementName, movementColors]);
+
   // Load editing state or reset
   useEffect(() => {
     if (editMission) {
@@ -122,6 +172,10 @@ export default function MissionModal({
       setTipo(editMission.tipo || '');
       setMovementLogoUrl(editMission.movementLogoUrl || '');
       setDailySchedules(editMission.dailySchedules || []);
+
+      if (editMission.cardColor) {
+        setSelectedColorClass(editMission.cardColor);
+      }
 
       if (editMission.recurrence) {
         setRecurrenceFreq(editMission.recurrence.frequency);
@@ -169,6 +223,7 @@ export default function MissionModal({
       setRecurrenceDays([]);
       setRecurrenceEndDate('');
       setCustomDates([]);
+      setSelectedColorClass('bg-purple-600');
     }
   }, [editMission, initialDate, isOpen]);
 
@@ -261,6 +316,36 @@ export default function MissionModal({
 
     const finalMovement = useCustomMovement ? (customMovementName.trim() || 'Customizado') : movement;
 
+    // Save movement to color class mapping persistently
+    if (finalMovement) {
+      const updatedColors = { ...movementColors, [finalMovement]: selectedColorClass };
+      setMovementColors(updatedColors);
+      localStorage.setItem('catholic_movement_colors_maria', JSON.stringify(updatedColors));
+    }
+
+    if (useCustomMovement && customMovementName.trim()) {
+      try {
+        const savedCustom = localStorage.getItem('saved_custom_catholic_movements');
+        const customObj = savedCustom ? JSON.parse(savedCustom) : {};
+        customObj[customMovementName.trim()] = {
+          name: customMovementName.trim(),
+          fullName: customMovementName.trim(),
+          iconName: 'Church',
+          colorClass: selectedColorClass || 'bg-purple-600',
+          borderClass: 'border-purple-400',
+          textClass: 'text-purple-600',
+          gradientClass: 'from-purple-600 to-indigo-750',
+          bannerUrl: 'https://images.unsplash.com/photo-1438232992991-995b7058bbb3?auto=format&fit=crop&w=800&q=80',
+          shortDesc: 'Movimento personalizado cadastrado pelo missionário.',
+          logoUrl: movementLogoUrl || undefined
+        };
+        localStorage.setItem('saved_custom_catholic_movements', JSON.stringify(customObj));
+        window.dispatchEvent(new Event('customMovementsChanged'));
+      } catch (err) {
+        console.error('Error saving custom movement info:', err);
+      }
+    }
+
     const payload: Partial<Mission> = {
       title: title.trim() || 'Nova Missão',
       movement: finalMovement,
@@ -285,6 +370,7 @@ export default function MissionModal({
         customDates: customDates.length > 0 ? customDates : undefined,
         endDate: recurrenceEndDate || undefined,
       } : undefined,
+      cardColor: selectedColorClass
     };
 
     if (editMission) {
@@ -295,6 +381,23 @@ export default function MissionModal({
 
     onSave(payload);
   };
+
+  const isTitleDiff = title !== (editMission?.title || '');
+  const isDateStrDiff = dateStr !== (editMission?.dateStr || initialDate || '');
+  const isEndDateStrDiff = endDateStr !== (editMission?.endDateStr || '');
+  const isStartTimeDiff = startTime !== (editMission?.startTime || '19:00');
+  const isEndTimeDiff = endTime !== (editMission?.endTime || '20:30');
+  const isLocationDiff = location !== (editMission?.location || '');
+  const isDescriptionDiff = description !== (editMission?.description || '');
+  const isInstagramUrlDiff = instagramUrl !== (editMission?.instagramUrl || '');
+  const isTipoDiff = tipo !== (editMission?.tipo || '');
+  const isObservationDiff = observation !== (editMission?.observation || '');
+  const isStatusDiff = status !== (editMission?.status || (initialDate ? 'preparing' : 'backlog'));
+  const isMovementDiff = movement !== (editMission ? (Object.values(CatholicMovement).includes(editMission.movement as CatholicMovement) ? editMission.movement : 'custom') : CatholicMovement.PAROQUIAL);
+  const isCustomMovementNameDiff = customMovementName !== (editMission && !Object.values(CatholicMovement).includes(editMission.movement as CatholicMovement) ? editMission.movement : '');
+  const isMovementLogoUrlDiff = movementLogoUrl !== (editMission?.movementLogoUrl || '');
+
+  const hasChanged = isTitleDiff || isDateStrDiff || isEndDateStrDiff || isStartTimeDiff || isEndTimeDiff || isLocationDiff || isDescriptionDiff || isInstagramUrlDiff || isTipoDiff || isObservationDiff || isStatusDiff || isMovementDiff || isCustomMovementNameDiff || isMovementLogoUrlDiff;
 
   return (
     <div className="fixed inset-0 bg-purple-950/45 backdrop-blur-xs flex items-center justify-center p-4 z-50">
@@ -363,7 +466,7 @@ export default function MissionModal({
                 onChange={(e) => handleMovementSelectChange(e.target.value)}
                 className="w-full bg-white border border-purple-200 rounded-xl px-2.5 py-1.5 outline-none focus:border-purple-600 font-bold text-purple-800 text-xs"
               >
-                {Object.entries(MOVEMENT_DATA).map(([key, info]) => (
+                {getSortedMovements().map(([key, info]) => (
                   <option key={key} value={key}>
                     ⛪ {info.name} - {info.fullName}
                   </option>
@@ -428,6 +531,47 @@ export default function MissionModal({
               </div>
             </div>
           )}
+
+          {/* Escolha de Cor do Card / Movimento */}
+          <div className="bg-purple-50/50 p-3 rounded-xl border border-purple-100 space-y-2">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-1">
+              <div>
+                <label className="text-[10px] font-black uppercase text-purple-700 block">🎨 Cor Personalizada do Card / Evento</label>
+                <span className="text-[9px] text-purple-600 block">
+                  Ao salvar, esta cor será definida como padrão para futuros eventos do movimento <strong className="text-purple-700">"{useCustomMovement ? (customMovementName.trim() || 'Customizado') : (getMovementStyle(movement)?.name || movement)}"</strong>.
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5 mt-1 sm:mt-0">
+                <span className="text-[9px] font-black text-purple-800">Visualização do card:</span>
+                <span className={`text-[9px] text-white uppercase font-black px-2 py-0.5 rounded shadow-xs ${selectedColorClass}`}>
+                  {useCustomMovement ? (customMovementName.trim() || 'Customizado') : (getMovementStyle(movement)?.name || movement)}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2 pt-1">
+              {AVAILABLE_COLORS.map((color) => {
+                const isSelected = selectedColorClass === color.class;
+                return (
+                  <button
+                    key={color.class}
+                    type="button"
+                    onClick={() => setSelectedColorClass(color.class)}
+                    className={`w-7 h-7 rounded-full ${color.class} border-2 transition-all duration-200 transform hover:scale-110 active:scale-95 relative flex items-center justify-center cursor-pointer ${
+                      isSelected
+                        ? "border-purple-900 ring-2 ring-purple-300 scale-105 shadow-md"
+                        : "border-transparent hover:border-gray-200 shadow-3xs"
+                    }`}
+                    title={color.label}
+                  >
+                    {isSelected && (
+                      <span className="text-[10px] text-white">✓</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
             {/* Start Date */}
@@ -758,22 +902,25 @@ export default function MissionModal({
 
         </form>
 
-        {/* Footer actions with shrunk, compact, slicker buttons */}
+        {/* Footer actions with dynamic close/save buttons */}
         <div className="bg-[#F5EEFD] border-t border-purple-150 p-2.5 px-4 flex gap-1.5 justify-end items-center shrink-0">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-2.5 py-1 rounded-lg border border-purple-250 hover:bg-purple-100 font-bold text-[11px] text-purple-850 transition"
-          >
-            Cancelar
-          </button>
-          <button
-            type="button"
-            onClick={handleSubmit}
-            className="px-3 py-1 rounded-lg bg-purple-700 hover:bg-purple-600 font-extrabold text-[11px] text-white flex items-center gap-1 shadow-md transition cursor-pointer"
-          >
-            <Save className="w-3 h-3" /> Salvar Missão
-          </button>
+          {hasChanged ? (
+            <button
+              type="button"
+              onClick={handleSubmit}
+              className="px-4 py-1.5 rounded-lg bg-purple-700 hover:bg-purple-600 font-extrabold text-[11px] text-white flex items-center gap-1 shadow-md transition cursor-pointer"
+            >
+              <Save className="w-3 h-3" /> Salvar
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-1.5 rounded-lg border border-purple-250 hover:bg-purple-100 font-bold text-[11px] text-purple-850 transition cursor-pointer"
+            >
+              Fechar
+            </button>
+          )}
         </div>
 
       </div>

@@ -3,8 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { ChevronLeft, ChevronRight, Clock, MapPin, Sparkles, Bell, X, Instagram } from 'lucide-react';
+import { motion } from 'motion/react';
 import { Mission } from '../types';
 import { getMovementStyle } from '../utils/catholicData';
 
@@ -21,60 +22,35 @@ export default function WarningCarousel({
 }: WarningCarouselProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selectedDetailMission, setSelectedDetailMission] = useState<Mission | null>(null);
+  const [isHovered, setIsHovered] = useState(false);
+  const [lastActivity, setLastActivity] = useState<number>(Date.now());
+  const dragOffsetRef = useRef(0);
 
-  // Format a date to compare
-  const formatDateForCompare = (d: Date) => {
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${y}-${m}-${day}`;
+  const resetInactivity = () => {
+    setLastActivity(Date.now());
   };
 
-  const todayStr = formatDateForCompare(currentSimulatedDate);
-  const tomorrow = new Date(currentSimulatedDate);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const tomorrowStr = formatDateForCompare(tomorrow);
+  const activeYear = currentSimulatedDate.getFullYear();
+  const activeMonth = currentSimulatedDate.getMonth() + 1; // 1-indexed
 
   // Filter and sort events chronologically
-  // 1st: Today (and confirmed/preparing, not completed)
-  // 2nd: Tomorrow
-  // 3rd: Future events
+  // 1st: Must be in the active calendar month (month and year of currentSimulatedDate)
+  // 2nd: Must be upcoming (dateStr >= '2026-06-06', which is simulated today)
   const carouselEvents = missions
-    .filter((m) => m.dateStr && m.status !== 'completed')
-    .map((m) => {
-      let priority = 3; // Future
-      let dayGroupText = '';
+    .filter((m) => {
+      if (!m.dateStr || m.status === 'completed') return false;
 
-      if (m.dateStr === todayStr) {
-        priority = 1;
-        dayGroupText = 'HOJE 🚨';
-      } else if (m.dateStr === tomorrowStr) {
-        priority = 2;
-        dayGroupText = 'AMANHÃ 📅';
-      } else {
-        const diffMs = new Date(m.dateStr + 'T00:00').getTime() - currentSimulatedDate.getTime();
-        const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
-        if (diffDays > 0) {
-          priority = 3;
-          dayGroupText = `Em ${diffDays} Dias ⏳`;
-        } else {
-          priority = 4; // Past uncompleted events
-          dayGroupText = 'Atrasado / Pendente';
-        }
-      }
+      const [y, mStr] = m.dateStr.split('-').map(Number);
+      if (isNaN(y) || isNaN(mStr)) return false;
 
-      return {
-        ...m,
-        priority,
-        dayGroupText,
-      };
+      const isInDisplayedMonth = y === activeYear && mStr === activeMonth;
+      const isUpcoming = m.dateStr >= '2026-06-06';
+
+      return isInDisplayedMonth && isUpcoming;
     })
-    .filter((m) => m.priority <= 3) // Only upcoming ones
     .sort((a, b) => {
-      if (a.priority !== b.priority) {
-        return a.priority - b.priority;
-      }
-      // Sort by start time if on the same priority group
+      const dateCompare = (a.dateStr || '').localeCompare(b.dateStr || '');
+      if (dateCompare !== 0) return dateCompare;
       return (a.startTime || '').localeCompare(b.startTime || '');
     });
 
@@ -83,35 +59,55 @@ export default function WarningCarousel({
     if (currentIndex >= carouselEvents.length && carouselEvents.length > 0) {
       setCurrentIndex(carouselEvents.length - 1);
     }
-  }, [carouselEvents, currentIndex]);
+  }, [carouselEvents.length, currentIndex]);
 
   // Automatic slideshow cycle for Personal Agenda carousel
   useEffect(() => {
     if (carouselEvents.length <= 1) return;
+
     const interval = setInterval(() => {
-      setCurrentIndex((prev) => (prev + 1) % carouselEvents.length);
-    }, 4500);
+      // Pause slideshow if user is hovering, modal is open, or it hasn't been 4s of complete inactivity
+      if (isHovered || selectedDetailMission !== null) {
+        setLastActivity(Date.now());
+        return;
+      }
+
+      const elapsed = Date.now() - lastActivity;
+      if (elapsed >= 4000) {
+        setCurrentIndex((prev) => (prev + 1) % carouselEvents.length);
+      }
+    }, 1000); // Check every second for excellent reactivity
+
     return () => clearInterval(interval);
-  }, [carouselEvents.length]);
+  }, [carouselEvents.length, lastActivity, isHovered, selectedDetailMission]);
 
   if (carouselEvents.length === 0) {
+    const monthNames = [
+      'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+      'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+    ];
+    const currentMonthName = monthNames[currentSimulatedDate.getMonth()];
     return (
-      <div className="bg-purple-100 p-4.5 rounded-2xl border-2 border-purple-200 flex items-center justify-between text-purple-900 font-bold">
+      <div className="bg-purple-50 p-4.5 rounded-2xl border border-purple-100 flex items-center justify-between text-purple-900 font-bold">
         <div className="flex items-center gap-2">
           <Sparkles className="w-5 h-5 text-purple-600 animate-pulse" />
-          <span className="text-xs font-sans">Viva Cristo Rei! Nenhuma missão urgente cadastrada no horizonte próximo.</span>
+          <span className="text-xs font-sans">
+            Nenhuma missão futura cadastrada para <strong>{currentMonthName} de {activeYear}</strong>.
+          </span>
         </div>
       </div>
     );
   }
 
-  const handlePrev = (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handlePrev = (e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    resetInactivity();
     setCurrentIndex((prev) => (prev > 0 ? prev - 1 : carouselEvents.length - 1));
   };
 
-  const handleNext = (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleNext = (e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    resetInactivity();
     setCurrentIndex((prev) => (prev < carouselEvents.length - 1 ? prev + 1 : 0));
   };
 
@@ -130,7 +126,7 @@ export default function WarningCarousel({
       <div className="flex items-center justify-between border-b border-purple-100 pb-2.5">
         <h3 className="text-xs font-black uppercase text-purple-900 flex items-center gap-2">
           <Sparkles className="w-4 h-4 text-purple-600 animate-pulse" />
-          Próximas missões
+          Próximas missões deste mês
         </h3>
         <span className="text-[10px] bg-purple-100 text-purple-800 font-extrabold px-2 py-0.5 rounded-lg font-sans">
           {currentIndex + 1} de {carouselEvents.length}
@@ -138,8 +134,20 @@ export default function WarningCarousel({
       </div>
 
       <div
-        onClick={() => setSelectedDetailMission(carouselEvents[currentIndex])}
-        className="relative h-[240px] sm:h-[280px] w-full rounded-2xl overflow-hidden bg-purple-950 border border-purple-200 shadow-3xs flex flex-col justify-end group cursor-pointer hover:border-purple-400 hover:shadow-sm transition-all duration-300"
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => {
+          setIsHovered(false);
+          resetInactivity();
+        }}
+        onTouchStart={() => {
+          setIsHovered(true);
+          resetInactivity();
+        }}
+        onTouchEnd={() => {
+          setIsHovered(false);
+          resetInactivity();
+        }}
+        className="relative h-[240px] sm:h-[280px] w-full rounded-2xl overflow-hidden bg-purple-950 border border-purple-200 shadow-3xs flex flex-col justify-end group transition-all duration-300"
       >
         {/* Slide Content rendering */}
         {carouselEvents.map((event, idx) => {
@@ -156,21 +164,51 @@ export default function WarningCarousel({
           }
 
           return (
-            <div
+            <motion.div
               key={event.id}
-              className={`absolute inset-0 transition-all duration-700 ease-in-out flex flex-col justify-end p-4 sm:p-5 ${
-                isCurrent ? 'opacity-100 z-10 scale-100' : 'opacity-0 z-0 scale-95 pointer-events-none'
+              drag="x"
+              dragConstraints={{ left: 0, right: 0 }}
+              dragElastic={0.6}
+              onTapStart={() => {
+                dragOffsetRef.current = 0;
+              }}
+              onDragStart={() => {
+                dragOffsetRef.current = 0;
+                resetInactivity();
+                setIsHovered(true);
+              }}
+              onDrag={(e, info) => {
+                dragOffsetRef.current = Math.max(dragOffsetRef.current, Math.abs(info.offset.x));
+              }}
+              onDragEnd={(e, info) => {
+                setIsHovered(false);
+                resetInactivity();
+                const threshold = 50;
+                if (info.offset.x < -threshold) {
+                  handleNext();
+                } else if (info.offset.x > threshold) {
+                  handlePrev();
+                }
+              }}
+              onTap={() => {
+                resetInactivity();
+                if (dragOffsetRef.current < 15) {
+                  setSelectedDetailMission(event);
+                }
+              }}
+              className={`absolute inset-0 transition-all duration-700 ease-in-out flex flex-col justify-end p-4 sm:p-5 select-none ${
+                isCurrent ? 'opacity-100 z-10 scale-100 cursor-grab active:cursor-grabbing' : 'opacity-0 z-0 scale-95 pointer-events-none'
               }`}
             >
               {/* Background cover image with gradient overlay */}
               <div
-                className="absolute inset-0 bg-cover bg-center select-none bg-no-repeat"
+                className="absolute inset-0 bg-cover bg-center select-none bg-no-repeat pointer-events-none"
                 style={{ backgroundImage: `url("${bgImage}")` }}
               />
-              <div className="absolute inset-0 bg-gradient-to-t from-purple-950 via-purple-900/75 to-transparent" />
+              <div className="absolute inset-0 bg-gradient-to-t from-purple-950 via-purple-900/75 to-transparent pointer-events-none" />
 
               {/* Top-right movement logo overlay / indicator */}
-              <div className="absolute top-3 right-3 z-20 flex items-center gap-1.5 bg-white/95 px-2.5 py-1 rounded-xl shadow border border-purple-100 font-sans">
+              <div className="absolute top-3 right-3 z-20 flex items-center gap-1.5 bg-white/95 px-2.5 py-1 rounded-xl shadow border border-purple-100 font-sans pointer-events-none">
                 {mStyle?.logoUrl ? (
                   <img
                     src={mStyle.logoUrl}
@@ -187,7 +225,7 @@ export default function WarningCarousel({
               </div>
 
               {/* Overlaid Event Details inside slide */}
-              <div className="relative z-10 space-y-1.5 select-text font-semibold">
+              <div className="relative z-10 space-y-1.5 font-semibold pointer-events-none">
                 <div className="flex flex-wrap items-center gap-1.5">
                   <span className="text-[9px] bg-purple-700 text-white font-black uppercase px-2 py-0.5 rounded shadow-sm font-sans">
                     📅 {getEventDateSpan(event)}
@@ -225,7 +263,7 @@ export default function WarningCarousel({
                   </div>
                 )}
               </div>
-            </div>
+            </motion.div>
           );
         })}
 
@@ -249,6 +287,27 @@ export default function WarningCarousel({
               <ChevronRight className="w-4 h-4" />
             </button>
           </>
+        )}
+
+        {/* Navigation Indicator Dots */}
+        {carouselEvents.length > 1 && (
+          <div className="absolute bottom-3 left-0 right-0 z-20 flex justify-center gap-1.5 pointer-events-none">
+            {carouselEvents.map((_, idx) => (
+              <button
+                key={idx}
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  resetInactivity();
+                  setCurrentIndex(idx);
+                }}
+                className={`w-1.5 h-1.5 rounded-full transition-all duration-300 pointer-events-auto cursor-pointer ${
+                  idx === currentIndex ? 'bg-white w-4' : 'bg-white/40 hover:bg-white/60'
+                }`}
+                title={`Ir para slide ${idx + 1}`}
+              />
+            ))}
+          </div>
         )}
       </div>
 

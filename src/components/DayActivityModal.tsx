@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   X,
   ChevronLeft,
@@ -27,7 +27,7 @@ import {
   MoreHorizontal
 } from 'lucide-react';
 import { Mission, CatholicMovement, DailyTimeConfig, RecurrenceConfig } from '../types';
-import { MOVEMENT_DATA, getMovementStyle, isMissionOnDate } from '../utils/catholicData';
+import { getMovementStyle, isMissionOnDate, getEffectiveEndDate, getSortedMovements } from '../utils/catholicData';
 
 interface DayActivityModalProps {
   isOpen: boolean;
@@ -56,6 +56,24 @@ const TIPO_OPTIONS = [
   { value: 'acampamento', label: '⛺ Acampamento' },
   { value: 'seminario', label: '📖 Seminário' },
   { value: 'grupo', label: '🔥 Grupo de Oração' },
+  { value: 'reuniao', label: '💼 Reunião' },
+];
+
+const AVAILABLE_COLORS = [
+  { class: 'bg-violet-600', label: 'Roxo Paroquial' },
+  { class: 'bg-amber-500', label: 'Amarelo RCC' },
+  { class: 'bg-orange-500', label: 'Laranja Segue-me' },
+  { class: 'bg-blue-500', label: 'Azul EJNS' },
+  { class: 'bg-indigo-600', label: 'Índigo JSC' },
+  { class: 'bg-emerald-600', label: 'Verde Shalom' },
+  { class: 'bg-green-600', label: 'Verde Claro' },
+  { class: 'bg-red-500', label: 'Vermelho Vicentinos' },
+  { class: 'bg-rose-500', label: 'Rosa EJC' },
+  { class: 'bg-pink-600', label: 'Rosa Intenso' },
+  { class: 'bg-cyan-500', label: 'Ciano Canção Nova' },
+  { class: 'bg-teal-600', label: 'Teal Celestial' },
+  { class: 'bg-slate-700', label: 'Cinza Terço dos Homens' },
+  { class: 'bg-neutral-800', label: 'Preto / Escuro' },
 ];
 
 const getDatesInRange = (start: string, end?: string): string[] => {
@@ -103,17 +121,38 @@ export default function DayActivityModal({
   const dayMissions = missions
     .filter((m) => isMissionOnDate(m, selectedDay))
     .map((m) => {
+      let resolvedStart = m.startTime || '19:00';
+      let resolvedEnd = m.endTime || '20:30';
+
       if (m.dailySchedules && m.dailySchedules.length > 0) {
         const daily = m.dailySchedules.find((d) => d.dateStr === selectedDay);
         if (daily) {
-          return {
-            ...m,
-            startTime: daily.startTime,
-            endTime: daily.endTime,
-          };
+          resolvedStart = daily.startTime || '19:00';
+          resolvedEnd = daily.endTime || '20:30';
         }
       }
-      return m;
+
+      // Resolve daily 24h boundaries in case of multi-day/overnight durations
+      const effEndDate = getEffectiveEndDate(m);
+      if (m.dateStr !== effEndDate) {
+        if (selectedDay === m.dateStr) {
+          // Starts on this day, continues into the next day (ends at 24:00)
+          resolvedEnd = '24:00';
+        } else if (selectedDay === effEndDate) {
+          // Ends on this day, started on a previous day (starts at 00:00)
+          resolvedStart = '00:00';
+        } else if (selectedDay > m.dateStr && selectedDay < effEndDate) {
+          // Entirely intermediate day (covers 00:00 to 24:00)
+          resolvedStart = '00:00';
+          resolvedEnd = '24:00';
+        }
+      }
+
+      return {
+        ...m,
+        startTime: resolvedStart,
+        endTime: resolvedEnd,
+      };
     });
 
   // Convert time HH:MM to numerical minutes of the day (0 to 1440)
@@ -125,6 +164,16 @@ export default function DayActivityModal({
     const m = parseInt(parts[1], 10);
     if (isNaN(h) || isNaN(m)) return 0;
     return h * 60 + m;
+  };
+
+  const isEventPast = (m: Mission | undefined | null): boolean => {
+    if (!m || m.status === 'backlog' || !m.dateStr || !m.endTime) return false;
+    try {
+      const eventEnd = new Date(`${m.dateStr}T${m.endTime}`);
+      return new Date() >= eventEnd;
+    } catch (e) {
+      return false;
+    }
   };
 
   // Heuristic to check if locations are in different cities
@@ -252,10 +301,24 @@ export default function DayActivityModal({
 
   const conflictsList = getConflicts();
 
+  const trackRefs = useRef<(HTMLDivElement | null)[]>([]);
+
+  const handleTrackScroll = (e: React.UIEvent<HTMLDivElement>, index: number) => {
+    const target = e.currentTarget;
+    const scrollLeft = target.scrollLeft;
+
+    trackRefs.current.forEach((ref, idx) => {
+      if (ref && idx !== index && ref.scrollLeft !== scrollLeft) {
+        ref.scrollLeft = scrollLeft;
+      }
+    });
+  };
+
   const [currentIndex, setCurrentIndex] = useState(0);
   const [likedPosts, setLikedPosts] = useState<Record<string, boolean>>({});
   const [isEditing, setIsEditing] = useState(false);
   const [isCreatingNew, setIsCreatingNew] = useState(false);
+  const [showEditSelectionPopup, setShowEditSelectionPopup] = useState(false);
 
   // Form Fields
   const [title, setTitle] = useState('');
@@ -277,6 +340,10 @@ export default function DayActivityModal({
   const [status, setStatus] = useState<Mission['status']>('preparing');
   const [dailySchedules, setDailySchedules] = useState<DailyTimeConfig[]>([]);
 
+  // Color configuration states
+  const [movementColors, setMovementColors] = useState<Record<string, string>>({});
+  const [selectedColorClass, setSelectedColorClass] = useState<string>('bg-purple-600');
+
   // Recurrence states
   const [recurrenceFreq, setRecurrenceFreq] = useState<RecurrenceConfig['frequency']>('none');
   const [recurrenceDays, setRecurrenceDays] = useState<number[]>([]);
@@ -290,6 +357,34 @@ export default function DayActivityModal({
     setIsEditing(false);
     setIsCreatingNew(false);
   }, [selectedDay, isOpen]);
+
+  // Load custom movement colors map
+  useEffect(() => {
+    if (isOpen) {
+      const savedColors = localStorage.getItem('catholic_movement_colors_maria');
+      if (savedColors) {
+        try {
+          setMovementColors(JSON.parse(savedColors));
+        } catch (e) {
+          console.error('Erro ao ler cores de movimentos:', e);
+        }
+      }
+    }
+  }, [isOpen]);
+
+  // Sync selectedColorClass when movement, useCustomMovement, customMovementName or movementColors change
+  useEffect(() => {
+    const currentMovement = useCustomMovement ? (customMovementName.trim() || 'Customizado') : movement;
+    if (currentMovement) {
+      const savedColor = movementColors[currentMovement];
+      if (savedColor) {
+        setSelectedColorClass(savedColor);
+      } else {
+        const defaultStyle = getMovementStyle(currentMovement);
+        setSelectedColorClass(defaultStyle?.colorClass || 'bg-purple-600');
+      }
+    }
+  }, [movement, useCustomMovement, customMovementName, movementColors, isOpen]);
 
   // Sync Form fields with currently viewed mission card
   useEffect(() => {
@@ -322,6 +417,10 @@ export default function DayActivityModal({
           setRecurrenceDays([]);
           setRecurrenceEndDate('');
           setCustomDates([]);
+        }
+
+        if (realMission.cardColor) {
+          setSelectedColorClass(realMission.cardColor);
         }
 
         const isStandard = Object.values(CatholicMovement).includes(realMission.movement as CatholicMovement);
@@ -358,6 +457,7 @@ export default function DayActivityModal({
       setRecurrenceDays([]);
       setRecurrenceEndDate('');
       setCustomDates([]);
+      setSelectedColorClass('bg-purple-600');
     }
   }, [currentIndex, selectedDay, isCreatingNew, missions, isOpen]);
 
@@ -387,8 +487,6 @@ export default function DayActivityModal({
       setDailySchedules([]);
     }
   }, [dateStr, endDateStr, startTime, endTime]);
-
-  if (!isOpen) return null;
 
   const toggleDayOfWeek = (day: number) => {
     setRecurrenceDays(prev => 
@@ -456,6 +554,36 @@ export default function DayActivityModal({
   const handleSave = () => {
     const finalMovement = useCustomMovement ? (customMovementName.trim() || 'Customizado') : movement;
 
+    // Save movement to color class mapping persistently
+    if (finalMovement) {
+      const updatedColors = { ...movementColors, [finalMovement]: selectedColorClass };
+      setMovementColors(updatedColors);
+      localStorage.setItem('catholic_movement_colors_maria', JSON.stringify(updatedColors));
+    }
+
+    if (useCustomMovement && customMovementName.trim()) {
+      try {
+        const savedCustom = localStorage.getItem('saved_custom_catholic_movements');
+        const customObj = savedCustom ? JSON.parse(savedCustom) : {};
+        customObj[customMovementName.trim()] = {
+          name: customMovementName.trim(),
+          fullName: customMovementName.trim(),
+          iconName: 'Church',
+          colorClass: selectedColorClass || 'bg-purple-600',
+          borderClass: 'border-purple-400',
+          textClass: 'text-purple-600',
+          gradientClass: 'from-purple-600 to-indigo-750',
+          bannerUrl: 'https://images.unsplash.com/photo-1438232992991-995b7058bbb3?auto=format&fit=crop&w=800&q=80',
+          shortDesc: 'Movimento personalizado cadastrado pelo missionário.',
+          logoUrl: movementLogoUrl || undefined
+        };
+        localStorage.setItem('saved_custom_catholic_movements', JSON.stringify(customObj));
+        window.dispatchEvent(new Event('customMovementsChanged'));
+      } catch (err) {
+        console.error('Error saving custom movement info:', err);
+      }
+    }
+
     const payload: Partial<Mission> = {
       title: title.trim() || 'Nova Missão',
       movement: finalMovement,
@@ -479,6 +607,7 @@ export default function DayActivityModal({
         customDates: customDates.length > 0 ? customDates : undefined,
         endDate: recurrenceEndDate || undefined,
       } : undefined,
+      cardColor: selectedColorClass
     };
 
     if (isCreatingNew) {
@@ -517,15 +646,142 @@ export default function DayActivityModal({
     }
   };
 
-  const formattedDayText = new Date(selectedDay + 'T00:00').toLocaleDateString('pt-BR', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-    weekday: 'long',
-  });
+  const formattedDayText = selectedDay
+    ? new Date(selectedDay + 'T00:00').toLocaleDateString('pt-BR', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+        weekday: 'long',
+      })
+    : '';
 
   const activeMission = dayMissions[currentIndex];
   const activeStyle = activeMission ? getMovementStyle(activeMission.movement) : getMovementStyle(movement);
+
+  useEffect(() => {
+    if (isOpen && activeMission) {
+      const timer = setTimeout(() => {
+        const activeElement = document.getElementById(`timeline-event-${activeMission.id}`);
+        if (activeElement) {
+          activeElement.scrollIntoView({
+            behavior: 'smooth',
+            block: 'nearest',
+            inline: 'center'
+          });
+        }
+      }, 120);
+      return () => clearTimeout(timer);
+    }
+  }, [isOpen, activeMission?.id]);
+
+  const currentEditBase = isEditing ? dayMissions[currentIndex] : null;
+
+  const isTitleDiff = title !== (currentEditBase?.title || '');
+  const isDateStrDiff = dateStr !== (currentEditBase?.dateStr || selectedDay || '');
+  const isEndDateStrDiff = endDateStr !== (currentEditBase?.endDateStr || '');
+  const isStartTimeDiff = startTime !== (currentEditBase?.startTime || '19:00');
+  const isEndTimeDiff = endTime !== (currentEditBase?.endTime || '20:30');
+  const isLocationDiff = location !== (currentEditBase?.location || '');
+  const isInstagramUrlDiff = instagramUrl !== (currentEditBase?.instagramUrl || '');
+  const isTipoDiff = tipo !== (currentEditBase?.tipo || '');
+  const isObservationDiff = observation !== (currentEditBase?.observation || '');
+  const isStatusDiff = status !== (currentEditBase?.status || 'preparing');
+  const isMovementDiff = movement !== (currentEditBase ? (Object.values(CatholicMovement).includes(currentEditBase.movement as CatholicMovement) ? currentEditBase.movement : 'custom') : CatholicMovement.PAROQUIAL);
+  const isCustomMovementNameDiff = customMovementName !== (currentEditBase && !Object.values(CatholicMovement).includes(currentEditBase.movement as CatholicMovement) ? currentEditBase.movement : '');
+  const isMovementLogoUrlDiff = movementLogoUrl !== (currentEditBase?.movementLogoUrl || '');
+
+  const hasFormChanged = (isEditing || isCreatingNew) && (isTitleDiff || isDateStrDiff || isEndDateStrDiff || isStartTimeDiff || isEndTimeDiff || isLocationDiff || isInstagramUrlDiff || isTipoDiff || isObservationDiff || isStatusDiff || isMovementDiff || isCustomMovementNameDiff || isMovementLogoUrlDiff);
+
+  const getTimelineTracks = () => {
+    const tracks: Mission[][] = [];
+    
+    sortedDayMissions.forEach((m) => {
+      const mStart = timeToMins(m.startTime || '19:00');
+      const mEnd = m.endTime ? timeToMins(m.endTime) : Math.min(mStart + 60, 1440);
+      
+      let added = false;
+      for (const track of tracks) {
+        const hasOverlap = track.some((existing) => {
+          const exStart = timeToMins(existing.startTime || '19:00');
+          const exEnd = existing.endTime ? timeToMins(existing.endTime) : Math.min(exStart + 60, 1440);
+          return mStart < exEnd && exStart < mEnd;
+        });
+        if (!hasOverlap) {
+          track.push(m);
+          added = true;
+          break;
+        }
+      }
+      if (!added) {
+        tracks.push([m]);
+      }
+    });
+    
+    if (tracks.length === 0) {
+      tracks.push([]);
+    }
+    
+    return tracks;
+  };
+
+  const generateTrackSegments = (trackMissions: Mission[]) => {
+    const segments: (
+      | { type: 'empty'; hour: number }
+      | { type: 'event'; mission: Mission; startM: number; endM: number }
+    )[] = [];
+    
+    let currentMin = 0;
+    
+    trackMissions.forEach((m) => {
+      const startM = timeToMins(m.startTime || '19:00');
+      const endM = m.endTime ? timeToMins(m.endTime) : Math.min(startM + 60, 1440);
+      
+      while (currentMin + 60 <= startM) {
+        const hourNum = Math.floor(currentMin / 60);
+        segments.push({ type: 'empty', hour: hourNum });
+        currentMin += 60;
+      }
+      
+      if (currentMin < startM) {
+        const hourNum = Math.floor(currentMin / 60);
+        segments.push({ type: 'empty', hour: hourNum });
+        currentMin = startM;
+      }
+      
+      segments.push({ type: 'event', mission: m, startM, endM });
+      currentMin = endM;
+    });
+    
+    while (currentMin + 60 <= 1440) {
+      const hourNum = Math.floor(currentMin / 60);
+      segments.push({ type: 'empty', hour: hourNum });
+      currentMin += 60;
+    }
+    if (currentMin < 1440) {
+      const hourNum = Math.floor(currentMin / 60);
+      segments.push({ type: 'empty', hour: hourNum });
+    }
+    
+    return segments;
+  };
+
+  const handleBottomButtonClick = () => {
+    if (hasFormChanged) {
+      handleSave();
+      onClose();
+    } else if (dayMissions.length > 0 && !isEditing && !isCreatingNew) {
+      if (dayMissions.length === 1) {
+        setCurrentIndex(0);
+        setIsEditing(true);
+      } else {
+        setShowEditSelectionPopup(true);
+      }
+    } else {
+      onClose();
+    }
+  };
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 bg-purple-950/45 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in text-xs text-purple-950">
@@ -610,9 +866,9 @@ export default function DayActivityModal({
                     onChange={(e) => handleMovementSelectChange(e.target.value)}
                     className="w-full bg-white border border-purple-200 rounded-xl px-2.5 py-1.5 outline-none focus:border-purple-600 font-bold text-purple-800 text-xs"
                   >
-                    {Object.entries(MOVEMENT_DATA).map(([key, info]) => (
+                    {getSortedMovements().map(([key, info]) => (
                       <option key={key} value={key}>
-                        ⛪ {info.name}
+                        ⛪ {info.name} - {info.fullName}
                       </option>
                     ))}
                     <option value="custom">✨ Outro Movimento (Digitar...)</option>
@@ -675,6 +931,47 @@ export default function DayActivityModal({
                   </div>
                 </div>
               )}
+
+              {/* Escolha de Cor do Card / Movimento */}
+              <div className="bg-purple-50/50 p-3 rounded-xl border border-purple-100 space-y-2">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-1">
+                  <div>
+                    <label className="text-[10px] font-black uppercase text-purple-700 block">🎨 Cor Personalizada do Card / Evento</label>
+                    <span className="text-[9px] text-purple-600 block">
+                      Ao salvar, esta cor será definida como padrão para futuros eventos do movimento <strong className="text-purple-700">"{useCustomMovement ? (customMovementName.trim() || 'Customizado') : (getMovementStyle(movement)?.name || movement)}"</strong>.
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5 mt-1 sm:mt-0">
+                    <span className="text-[9px] font-black text-purple-800">Visualização do card:</span>
+                    <span className={`text-[9px] text-white uppercase font-black px-2 py-0.5 rounded shadow-xs ${selectedColorClass}`}>
+                      {useCustomMovement ? (customMovementName.trim() || 'Customizado') : (getMovementStyle(movement)?.name || movement)}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2 pt-1">
+                  {AVAILABLE_COLORS.map((color) => {
+                    const isSelected = selectedColorClass === color.class;
+                    return (
+                      <button
+                        key={color.class}
+                        type="button"
+                        onClick={() => setSelectedColorClass(color.class)}
+                        className={`w-7 h-7 rounded-full ${color.class} border-2 transition-all duration-200 transform hover:scale-110 active:scale-95 relative flex items-center justify-center cursor-pointer ${
+                          isSelected
+                            ? "border-purple-900 ring-2 ring-purple-300 scale-105 shadow-md"
+                            : "border-transparent hover:border-gray-200 shadow-3xs"
+                        }`}
+                        title={color.label}
+                      >
+                        {isSelected && (
+                          <span className="text-[10px] text-white">✓</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
                 {/* Dates */}
@@ -1033,73 +1330,99 @@ export default function DayActivityModal({
                   </span>
                 </div>
 
-                {/* The 24h Timeline Bar */}
-                <div className="space-y-1.5">
-                  <div className="relative h-7 bg-purple-100/70 border border-purple-200/60 rounded-xl flex items-center select-none overflow-hidden min-w-[200px]">
-                    {/* Blurred Shalom logo background underlay (to avoid interfering with readability) */}
-                    <div
-                      className="absolute inset-0 z-0 bg-contain bg-center bg-no-repeat opacity-[0.25] pointer-events-none"
-                      style={{
-                        backgroundImage: 'url("https://iili.io/B51WMLF.jpg")',
-                        filter: 'blur(0.5px)'
-                      }}
-                    />
-
-                    {/* Hourly vertical guide marks */}
-                    {[0, 4, 8, 12, 16, 20, 24].map((h) => {
-                      const leftPct = (h / 24) * 100;
+                {/* Smart Adaptive Timeline Bar */}
+                <div className="space-y-3 pt-1">
+                  <div className="flex flex-col gap-2.5">
+                    {getTimelineTracks().map((trackMissions, trackIdx) => {
+                      const segments = generateTrackSegments(trackMissions);
                       return (
-                        <div
-                          key={h}
-                          className="absolute h-full border-l border-purple-200/40 z-10"
-                          style={{ left: `${leftPct}%` }}
-                        />
-                      );
-                    })}
-
-                    {/* Mission blocks plotted */}
-                    {dayMissions.map((m) => {
-                      if (!m.startTime) return null;
-                      const startM = timeToMins(m.startTime);
-                      const endM = m.endTime ? timeToMins(m.endTime) : Math.min(startM + 60, 1440);
-                      const leftPct = (startM / 1440) * 100;
-                      const widthPct = Math.max(((endM - startM) / 1440) * 100, 4); // min 4% width so short events are selectable
-                      const style = getMovementStyle(m.movement);
-                      const isCurrentM = m.id === dayMissions[currentIndex]?.id;
-
-                      return (
-                        <div
-                          key={m.id}
-                          onClick={() => {
-                            const foundIdx = dayMissions.findIndex((dm) => dm.id === m.id);
-                            if (foundIdx !== -1) setCurrentIndex(foundIdx);
+                        <div 
+                          key={trackIdx} 
+                          ref={(el) => {
+                            trackRefs.current[trackIdx] = el;
                           }}
-                          className={`absolute top-0 bottom-0 rounded-lg text-[8px] font-black font-mono text-white flex items-center justify-center p-0.5 border cursor-pointer select-none transition ${
-                            style?.colorClass || 'bg-purple-600'
-                          } ${
-                            isCurrentM
-                              ? 'ring-2 ring-purple-900 border-white z-20 scale-y-105 shadow-md'
-                              : 'opacity-80 hover:opacity-100 hover:z-10'
-                          }`}
-                          style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
-                          title={`${m.title} (${m.startTime} - ${m.endTime})`}
+                          onScroll={(e) => handleTrackScroll(e, trackIdx)}
+                          className="flex items-center gap-1 w-full overflow-x-auto no-scrollbar py-1"
                         >
-                          {m.startTime}
+                          {segments.map((seg, idx) => {
+                            if (seg.type === 'empty') {
+                              return (
+                                <div
+                                  key={idx}
+                                  className="flex-0 shrink-0 w-6 h-10 bg-purple-100/35 hover:bg-purple-200/40 border border-purple-200/20 rounded-lg flex flex-col justify-between items-center py-1 text-[7.5px] font-mono text-purple-400 font-bold transition"
+                                  title={`Horário vago: ${String(seg.hour).padStart(2, '0')}:00`}
+                                >
+                                  <span>{String(seg.hour).padStart(2, '0')}</span>
+                                  <div className="w-1 h-1 rounded-full bg-purple-300" />
+                                </div>
+                              );
+                            } else {
+                              const m = seg.mission;
+                              const duration = seg.endM - seg.startM;
+                              const widthVal = Math.max(130, duration * 1.5);
+                              const style = getMovementStyle(m.movement);
+                              const isCurrentM = m.id === dayMissions[currentIndex]?.id;
+                              
+                              return (
+                                <div
+                                  key={m.id}
+                                  id={`timeline-event-${m.id}`}
+                                  onClick={() => {
+                                    const foundIdx = dayMissions.findIndex((dm) => dm.id === m.id);
+                                    if (foundIdx !== -1) setCurrentIndex(foundIdx);
+                                  }}
+                                  style={{ width: `${widthVal}px` }}
+                                  className={`flex-[1_1_auto] shrink-0 h-10 rounded-xl px-2 flex flex-col justify-between cursor-pointer border select-none transition-all duration-300 relative overflow-hidden ${
+                                    style?.colorClass || 'bg-purple-600'
+                                  } ${
+                                    isCurrentM
+                                      ? 'ring-2.5 ring-purple-900 border-white z-20 shadow-md scale-102'
+                                      : 'opacity-85 hover:opacity-100 hover:z-10 border-transparent'
+                                  }`}
+                                  title={`${m.title} (${m.startTime} - ${m.endTime})`}
+                                >
+                                  {/* Event Content Line with Start, Title/Logo, End Times */}
+                                  <div className="flex items-center justify-between w-full h-full text-white gap-1.5 py-0.5">
+                                    {/* Start Time */}
+                                    <span className="font-mono text-[8px] font-black bg-black/20 px-1 py-0.5 rounded shrink-0 leading-none">
+                                      {m.startTime || '19:00'}
+                                    </span>
+
+                                    {/* Title and Logo */}
+                                    <div className="flex items-center gap-1 min-w-0 max-w-[60%] justify-center">
+                                      {style?.logoUrl ? (
+                                        <img
+                                          src={style.logoUrl}
+                                          alt={style.name}
+                                          className="w-3.5 h-3.5 rounded-full object-cover border border-white/20 shrink-0"
+                                          referrerPolicy="no-referrer"
+                                        />
+                                      ) : (
+                                        <div className="w-3.5 h-3.5 rounded-full bg-white/20 flex items-center justify-center text-[7px] border border-white/5 shrink-0">
+                                          ⛪
+                                        </div>
+                                      )}
+                                      <span className="font-black text-[9px] truncate leading-none">
+                                        {m.title}
+                                      </span>
+                                    </div>
+
+                                    {/* End Time */}
+                                    <span className="font-mono text-[8px] font-black bg-black/20 px-1 py-0.5 rounded shrink-0 leading-none">
+                                      {m.endTime || '20:30'}
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            }
+                          })}
                         </div>
                       );
                     })}
                   </div>
-
-                  {/* 24h text layout indicators */}
-                  <div className="flex justify-between text-[8px] font-mono font-bold text-purple-400 select-none px-1">
-                    <span>00h</span>
-                    <span>04h</span>
-                    <span>08h</span>
-                    <span>12h</span>
-                    <span>16h</span>
-                    <span>20h</span>
-                    <span>24h</span>
-                  </div>
+                  <p className="text-[9px] text-purple-400 font-bold italic leading-none">
+                    * Os horários sem atividade aparecem de forma compactada (vagos de 1h em 1h), enquanto as missões se adaptam dinamicamente à sua duração, listando os horários de início e fim nas extremidades.
+                  </p>
                 </div>
 
                 {/* Orderly chronological summary and selection clicks */}
@@ -1341,6 +1664,75 @@ export default function DayActivityModal({
                   </div>
                 </div>
 
+                {/* Presença / Confirmação de Comparecimento se o evento for antigo */}
+                {activeMission && isEventPast(activeMission) && (
+                  <div className={`p-4 rounded-xl border ${
+                    activeMission.attended === true
+                      ? 'bg-emerald-50 border-emerald-250 text-emerald-950 shadow-3xs'
+                      : activeMission.attended === false
+                        ? 'bg-rose-50 border-rose-250 text-rose-950 shadow-3xs'
+                        : 'bg-amber-50 border-amber-250 text-amber-950/90'
+                  } space-y-2.5 transition-all text-xs`}>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] uppercase font-black tracking-widest block text-purple-900/60 font-sans">
+                        ⛪ Confirmação de Presença
+                      </span>
+                      {activeMission.attended === true && (
+                        <span className="text-[9px] bg-emerald-600 text-white font-extrabold px-1.5 py-0.5 rounded uppercase font-sans">
+                          Compareceu
+                        </span>
+                      )}
+                      {activeMission.attended === false && (
+                        <span className="text-[9px] bg-rose-600 text-white font-extrabold px-1.5 py-0.5 rounded uppercase font-sans">
+                          Não fui
+                        </span>
+                      )}
+                      {activeMission.attended === undefined && (
+                        <span className="text-[9px] bg-amber-600 text-white font-extrabold px-1.5 py-0.5 rounded uppercase tracking-wider font-sans">
+                          Pendente
+                        </span>
+                      )}
+                    </div>
+                    
+                    <p className="text-[11px] leading-relaxed font-bold">
+                      {activeMission.attended === undefined
+                        ? `Você esteve presente em "${activeMission.title}"? Confirme para registrar suas dedicatórias e horas de missão.`
+                        : `Sua presença foi registrada como: ${activeMission.attended ? 'Estive presente! Tempo integral incorporado na retrospectiva.' : 'Não fui/Não pude comparecer.'}`}
+                    </p>
+                    
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const updated = { ...activeMission, attended: false };
+                          onSaveMission(updated);
+                        }}
+                        className={`flex-1 py-1.5 px-3 rounded-lg border text-[10px] font-black tracking-wide uppercase transition cursor-pointer flex items-center justify-center gap-1.5 ${
+                          activeMission.attended === false
+                            ? 'bg-rose-650 border-rose-650 text-white shadow-xs font-black'
+                            : 'bg-white hover:bg-rose-50 border-slate-200 text-slate-500 hover:text-rose-650 font-bold'
+                        }`}
+                      >
+                        <X className="w-3.5 h-3.5" /> Não fui
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const updated = { ...activeMission, attended: true, status: 'completed' as const };
+                          onSaveMission(updated);
+                        }}
+                        className={`flex-1 py-1.5 px-3 rounded-lg border text-[10px] font-black tracking-wide uppercase transition cursor-pointer flex items-center justify-center gap-1.5 ${
+                          activeMission.attended === true
+                            ? 'bg-emerald-650 border-emerald-650 text-white shadow-xs font-black'
+                            : 'bg-purple-700 hover:bg-purple-800 border-purple-850 text-white shadow-xs font-black'
+                        }`}
+                      >
+                        <span className="text-[11px]">⛪</span> Fui, estive lá!
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 {/* Info block cards */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 text-xs text-purple-950">
                   
@@ -1467,14 +1859,98 @@ export default function DayActivityModal({
         <div className="bg-[#F5EEFD] border-t border-purple-150 p-2.5 px-4 flex justify-between items-center text-[9px] text-purple-600 font-bold shrink-0">
           <span>«O Espírito do Senhor está sobre mim, porque ele me consagrou...» Lc 4,18</span>
           <button
-            onClick={onClose}
-            className="px-3 py-1 bg-purple-200 hover:bg-purple-300 font-black rounded-lg text-purple-900 transition"
+            onClick={handleBottomButtonClick}
+            className={`px-3 py-1 font-black rounded-lg transition shrink-0 cursor-pointer ${
+              hasFormChanged || (dayMissions.length > 0 && !isEditing && !isCreatingNew)
+                ? 'bg-purple-700 hover:bg-purple-600 text-white shadow-md'
+                : 'bg-purple-200 hover:bg-purple-300 text-purple-900'
+            }`}
           >
-            Fechar
+            {hasFormChanged 
+              ? 'Salvar' 
+              : (dayMissions.length > 0 && !isEditing && !isCreatingNew) 
+                ? 'Editar' 
+                : 'Fechar'}
           </button>
         </div>
 
       </div>
+
+      {/* Choose Mission to Edit Popup Modal */}
+      {showEditSelectionPopup && (
+        <div className="fixed inset-0 bg-purple-950/50 backdrop-blur-xs flex items-center justify-center z-[70] animate-fade-in p-4 text-xs font-sans text-purple-950">
+          <div className="bg-white rounded-2xl shadow-2xl border border-purple-200 max-w-sm w-full p-5 space-y-4">
+            <div className="flex items-center justify-between border-b border-purple-100 pb-3 font-sans">
+              <h4 className="font-extrabold text-xs uppercase tracking-wider text-purple-900 flex items-center gap-1.5">
+                ✏️ Escolher Evento para Editar
+              </h4>
+              <button
+                onClick={() => setShowEditSelectionPopup(false)}
+                className="p-1 rounded-lg hover:bg-purple-100 text-purple-400 hover:text-purple-700 transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            
+            <p className="text-[11px] text-purple-600 font-bold leading-relaxed">
+              Vários eventos foram encontrados neste dia. Por favor, escolha qual deseja editar:
+            </p>
+
+            <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+              {dayMissions.map((m, idx) => {
+                const style = getMovementStyle(m.movement);
+                return (
+                  <button
+                    key={m.id}
+                    onClick={() => {
+                      setCurrentIndex(idx);
+                      setIsEditing(true);
+                      setShowEditSelectionPopup(false);
+                    }}
+                    className="w-full py-2.5 px-3 rounded-xl border border-purple-150 hover:bg-purple-50 text-left flex items-center justify-between gap-3 transition hover:border-purple-300 shadow-3xs cursor-pointer"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      {style?.logoUrl ? (
+                        <img
+                          src={style.logoUrl}
+                          alt={style.name}
+                          className="w-5.5 h-5.5 rounded-full object-cover shrink-0"
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : (
+                        <div className="w-5.5 h-5.5 rounded-full bg-purple-100 flex items-center justify-center text-xs shrink-0 font-bold">
+                          ⛪
+                        </div>
+                      )}
+                      <div className="min-w-0">
+                        <p className="font-extrabold text-xs text-purple-900 truncate">
+                          {m.title}
+                        </p>
+                        <p className="font-bold text-[10px] text-purple-400 uppercase tracking-wide">
+                          {style?.name || 'Paroquial'}
+                        </p>
+                      </div>
+                    </div>
+                    
+                    <span className="font-mono text-[10px] font-black shrink-0 text-purple-800 bg-purple-50 border border-purple-100 px-1.5 py-0.5 rounded-lg">
+                      {m.startTime || '--:--'}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            
+            <div className="flex justify-end pt-1">
+              <button
+                onClick={() => setShowEditSelectionPopup(false)}
+                className="px-4 py-1.5 rounded-lg border border-purple-250 hover:bg-purple-150 font-bold text-[11px] text-purple-800 transition cursor-pointer"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

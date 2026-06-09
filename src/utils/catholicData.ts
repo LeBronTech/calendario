@@ -136,24 +136,113 @@ export const MOVEMENT_DATA: Record<CatholicMovement, MovementStyle> = {
   },
 };
 
+export function getAllMovements(): Record<string, MovementStyle> {
+  const base = { ...MOVEMENT_DATA } as Record<string, MovementStyle>;
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      const savedCustom = window.localStorage.getItem('saved_custom_catholic_movements');
+      if (savedCustom) {
+        const parsed = JSON.parse(savedCustom);
+        Object.entries(parsed).forEach(([key, customInfo]: [string, any]) => {
+          base[key] = {
+            name: customInfo.name || key,
+            fullName: customInfo.fullName || key,
+            iconName: customInfo.iconName || 'Church',
+            colorClass: customInfo.colorClass || 'bg-purple-600',
+            borderClass: customInfo.borderClass || 'border-purple-400',
+            textClass: customInfo.textClass || 'text-purple-600',
+            gradientClass: customInfo.gradientClass || 'from-purple-600 to-indigo-750',
+            bannerUrl: customInfo.bannerUrl || 'https://images.unsplash.com/photo-1438232992991-995b7058bbb3?auto=format&fit=crop&w=800&q=80',
+            shortDesc: customInfo.shortDesc || 'Movimento personalizado cadastrado pelo missionário.',
+            logoUrl: customInfo.logoUrl
+          };
+        });
+      }
+    }
+  } catch (e) {
+    console.error('Error loading custom movements', e);
+  }
+  return base;
+}
+
+export function getSortedMovements(): [string, MovementStyle][] {
+  const all = getAllMovements();
+  return Object.entries(all).sort((a, b) => {
+    return a[1].name.localeCompare(b[1].name, 'pt-BR');
+  });
+}
+
 export function getMovementStyle(movement: string | CatholicMovement | undefined): MovementStyle {
   if (!movement) {
     return MOVEMENT_DATA[CatholicMovement.PAROQUIAL];
   }
-  if (movement in MOVEMENT_DATA) {
-    return MOVEMENT_DATA[movement as CatholicMovement];
+  
+  const all = getAllMovements();
+  let style: MovementStyle;
+  if (movement in all) {
+    style = { ...all[movement] };
+  } else {
+    style = {
+      name: movement,
+      fullName: movement,
+      iconName: 'Church',
+      colorClass: 'bg-purple-600',
+      borderClass: 'border-purple-400',
+      textClass: 'text-purple-600',
+      gradientClass: 'from-purple-600 to-indigo-700',
+      bannerUrl: 'https://images.unsplash.com/photo-1438232992991-995b7058bbb3?auto=format&fit=crop&w=800&q=80',
+      shortDesc: 'Movimento personalizado cadastrado pelo missionário.'
+    };
   }
-  return {
-    name: movement,
-    fullName: movement,
-    iconName: 'Church',
-    colorClass: 'bg-purple-600',
-    borderClass: 'border-purple-400',
-    textClass: 'text-purple-600',
-    gradientClass: 'from-purple-600 to-indigo-700',
-    bannerUrl: 'https://images.unsplash.com/photo-1438232992991-995b7058bbb3?auto=format&fit=crop&w=800&q=80',
-    shortDesc: 'Movimento personalizado cadastrado pelo missionário.'
-  };
+
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      const savedColors = window.localStorage.getItem('catholic_movement_colors_maria');
+      if (savedColors) {
+        const parsed = JSON.parse(savedColors);
+        const col = parsed[movement];
+        if (col) {
+          style.colorClass = col;
+        }
+      }
+    }
+  } catch (e) {
+    // Fail-safe if parsing fails or localStorage is blocked
+  }
+
+  return style;
+}
+
+function timeToMins(timeStr?: string): number {
+  if (!timeStr) return 0;
+  const parts = timeStr.split(':');
+  if (parts.length < 2) return 0;
+  const h = parseInt(parts[0], 10);
+  const m = parseInt(parts[1], 10);
+  if (isNaN(h) || isNaN(m)) return 0;
+  return h * 60 + m;
+}
+
+function getNextDayStr(dateStr: string): string {
+  try {
+    const d = new Date(dateStr + 'T12:00:00');
+    d.setDate(d.getDate() + 1);
+    return d.toISOString().split('T')[0];
+  } catch (e) {
+    return dateStr;
+  }
+}
+
+export function getEffectiveEndDate(mission: Mission): string {
+  if (mission.endDateStr) return mission.endDateStr;
+  if (mission.startTime && mission.endTime) {
+    const start = timeToMins(mission.startTime);
+    const end = timeToMins(mission.endTime);
+    if (end < start) {
+      return getNextDayStr(mission.dateStr);
+    }
+  }
+  return mission.dateStr;
 }
 
 export function isMissionOnDate(mission: Mission, dateStr: string): boolean {
@@ -167,12 +256,8 @@ export function isMissionOnDate(mission: Mission, dateStr: string): boolean {
     }
   }
 
-  if (!mission.endDateStr || mission.endDateStr === mission.dateStr) {
-    return mission.dateStr === dateStr;
-  }
-  
-  // Parse date strings to direct comparisons YYYY-MM-DD
-  return dateStr >= mission.dateStr && dateStr <= mission.endDateStr;
+  const effectiveEndDate = getEffectiveEndDate(mission);
+  return dateStr >= mission.dateStr && dateStr <= effectiveEndDate;
 }
 
 

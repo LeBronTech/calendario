@@ -19,6 +19,7 @@ export interface CatholicEvent {
   city: string;
   instagramUrl?: string;
   instagramImgUrl?: string;
+  cardColor?: string;
 }
 
 export const SEEDED_CATHOLIC_EVENTS: CatholicEvent[] = [];

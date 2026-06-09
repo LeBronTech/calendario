@@ -10,24 +10,24 @@ import {
   Globe,
   LogOut,
   Bell,
-  AlertTriangle
+  AlertTriangle,
+  Award
 } from 'lucide-react';
 import { CatholicMovement, Mission } from './types';
 import { MOVEMENT_DATA, getMovementStyle } from './utils/catholicData';
 
 // Component Imports
 import OfflineAlert from './components/OfflineAlert';
-import SecretariaVirtual from './components/SecretariaVirtual';
 import CalendarView from './components/CalendarView';
-import BacklogView from './components/BacklogView';
 import DayActivityModal from './components/DayActivityModal';
 import WarningCarousel from './components/WarningCarousel';
 import MissionModal from './components/MissionModal';
 import CatholicEventsCalendar from './components/CatholicEventsCalendar';
+import RetrospectivaView from './components/RetrospectivaView';
 
 // Auth Imports
 import { googleSignIn, logout, initAuth } from './utils/firebaseAuth';
-import { downloadMissions, uploadMission, removeMission, subscribeToMissions } from './utils/firebaseDb';
+import { downloadMissions, uploadMission, removeMission, subscribeToMissions, recoverLostMissions } from './utils/firebaseDb';
 import { User } from 'firebase/auth';
 
 const DEFAULT_MISSIONS: Mission[] = [
@@ -118,6 +118,388 @@ const DEFAULT_MISSIONS: Mission[] = [
   }
 ];
 
+const SEGUE_ME_EVENTS_TO_ADD: Mission[] = [
+  {
+    id: 'segue-me-pre-ensaio-2026',
+    title: 'Pré-Ensaio - Segue-me',
+    movement: CatholicMovement.SEGUE_ME,
+    dateStr: '2026-06-21',
+    startTime: '14:00',
+    endTime: '18:00',
+    location: 'Salão Paroquial',
+    description: 'Pré-ensaio preparativo para as equipes de música, teatro e liturgia do Segue-me.',
+    status: 'preparing',
+    checklist: [],
+    roles: [],
+    observation: 'Garantir que as apostilas de cantos e roteiros estejam prontas.',
+    synced: false,
+    createdAt: new Date().toISOString()
+  },
+  {
+    id: 'segue-me-hora-santa-2026',
+    title: 'Hora Santa - Segue-me',
+    movement: CatholicMovement.SEGUE_ME,
+    dateStr: '2026-07-11',
+    startTime: '19:30',
+    endTime: '21:00',
+    location: 'Capela do Santíssimo / Igreja Matriz',
+    description: 'Momento espiritual de adoração e intercessão pelo Encontro VII Segue-me.',
+    status: 'preparing',
+    checklist: [],
+    roles: [],
+    observation: 'Convidar as equipes e o diretor espiritual do movimento.',
+    synced: false,
+    createdAt: new Date().toISOString()
+  },
+  {
+    id: 'segue-me-galinhada-2026',
+    title: 'Galinhada do Segue-me',
+    movement: CatholicMovement.SEGUE_ME,
+    dateStr: '2026-07-12',
+    startTime: '11:30',
+    endTime: '14:30',
+    location: 'Salão Paroquial',
+    description: 'Almoço beneficente - Galinhada do Segue-me para arrecadação de fundos.',
+    status: 'preparing',
+    checklist: [],
+    roles: [],
+    observation: 'Venda de ingressos antecipados nas missas anteriores.',
+    synced: false,
+    createdAt: new Date().toISOString()
+  },
+  {
+    id: 'segue-me-ensaio-geral-2026',
+    title: 'Ensaio Geral - Segue-me',
+    movement: CatholicMovement.SEGUE_ME,
+    dateStr: '2026-07-19',
+    startTime: '13:30',
+    endTime: '17:30',
+    location: 'Igreja Matriz / Salão',
+    description: 'Ensaio geral com todas as equipes de apoio, liturgia, teatro e canto.',
+    status: 'preparing',
+    checklist: [],
+    roles: [],
+    observation: 'Organizar crachás e revisar o cronograma.',
+    synced: false,
+    createdAt: new Date().toISOString()
+  },
+  {
+    id: 'segue-me-gincana-2026',
+    title: 'Gincana - Segue-me',
+    movement: CatholicMovement.SEGUE_ME,
+    dateStr: '2026-08-02',
+    startTime: '08:30',
+    endTime: '12:30',
+    location: 'Quadra da Paróquia / Área externa',
+    description: 'Gincana de integração dos jovens e equipes de trabalho do Segue-me.',
+    status: 'preparing',
+    checklist: [],
+    roles: [],
+    observation: 'Levar água e lanches para partilha.',
+    synced: false,
+    createdAt: new Date().toISOString()
+  },
+  {
+    id: 'segue-me-tarde-formacao-2026',
+    title: 'Tarde de Formação - Segue-me',
+    movement: CatholicMovement.SEGUE_ME,
+    dateStr: '2026-08-08',
+    startTime: '14:00',
+    endTime: '18:00',
+    location: 'Auditório Paroquial',
+    description: 'Tarde de formação espiritual, técnica e doutrinária para todos os seguidores e tios.',
+    status: 'preparing',
+    checklist: [],
+    roles: [],
+    observation: 'Levar caderno e caneta para anotações.',
+    synced: false,
+    createdAt: new Date().toISOString()
+  },
+  {
+    id: 'segue-me-encontro-d1-2026',
+    title: 'Encontro VII Segue-me - Dia 1',
+    movement: CatholicMovement.SEGUE_ME,
+    dateStr: '2026-08-14',
+    startTime: '18:00',
+    endTime: '22:00',
+    location: 'Centro de Formação / Paróquia',
+    description: 'Início oficial do Encontro VII Segue-me - Acolhida e primeira parte das palestras.',
+    status: 'confirmed',
+    checklist: [],
+    roles: [],
+    observation: 'Check-in dos encontristas na entrada principal.',
+    synced: false,
+    createdAt: new Date().toISOString()
+  },
+  {
+    id: 'segue-me-encontro-d2-2026',
+    title: 'Encontro VII Segue-me - Dia 2',
+    movement: CatholicMovement.SEGUE_ME,
+    dateStr: '2026-08-15',
+    startTime: '07:30',
+    endTime: '22:00',
+    location: 'Centro de Formação / Paróquia',
+    description: 'Segundo dia do VII Segue-me - Atividades reflexivas, pregações, confissões e vigília.',
+    status: 'confirmed',
+    checklist: [],
+    roles: [],
+    observation: 'Alimentação organizada pelas equipes de cozinha.',
+    synced: false,
+    createdAt: new Date().toISOString()
+  },
+  {
+    id: 'segue-me-encontro-d3-2026',
+    title: 'Encontro VII Segue-me - Dia 3',
+    movement: CatholicMovement.SEGUE_ME,
+    dateStr: '2026-08-16',
+    startTime: '07:30',
+    endTime: '19:00',
+    location: 'Centro de Formação / Paróquia',
+    description: 'Último dia do VII Segue-me - Encerramento das atividades e missa festiva de entrega.',
+    status: 'confirmed',
+    checklist: [],
+    roles: [],
+    observation: 'Preparação do salão para recepção dos pais à noite.',
+    synced: false,
+    createdAt: new Date().toISOString()
+  },
+  {
+    id: 'segue-me-avaliacao-2026',
+    title: 'Avaliação VII Segue-me',
+    movement: CatholicMovement.SEGUE_ME,
+    dateStr: '2026-08-19',
+    startTime: '19:30',
+    endTime: '21:30',
+    location: 'Salão Paroquial',
+    description: 'Reunião de avaliação geral sobre a organização do VII Segue-me.',
+    status: 'preparing',
+    checklist: [],
+    roles: [],
+    observation: 'Cada coordenador de equipe deve trazer seus pontos fortes e fracos anotados.',
+    synced: false,
+    createdAt: new Date().toISOString()
+  },
+  {
+    id: 'segue-me-missa-06-2026',
+    title: 'Missa do Segue-me (Junho)',
+    movement: CatholicMovement.SEGUE_ME,
+    dateStr: '2026-06-28',
+    startTime: '19:00',
+    endTime: '20:30',
+    location: 'Igreja Matriz',
+    description: 'Missa mensal do Movimento Segue-me com a participação de todos os jovens e tios (Último domingo do mês).',
+    status: 'confirmed',
+    checklist: [],
+    roles: [],
+    observation: 'Uso da camiseta oficial do Segue-me.',
+    synced: false,
+    createdAt: new Date().toISOString()
+  },
+  {
+    id: 'segue-me-missa-07-2026',
+    title: 'Missa do Segue-me (Julho)',
+    movement: CatholicMovement.SEGUE_ME,
+    dateStr: '2026-07-26',
+    startTime: '19:00',
+    endTime: '20:30',
+    location: 'Igreja Matriz',
+    description: 'Missa mensal do Movimento Segue-me com a participação de todos os jovens e tios (Último domingo do mês).',
+    status: 'confirmed',
+    checklist: [],
+    roles: [],
+    observation: 'Uso da camiseta oficial do Segue-me.',
+    synced: false,
+    createdAt: new Date().toISOString()
+  },
+  {
+    id: 'segue-me-missa-08-2026',
+    title: 'Missa do Segue-me (Agosto)',
+    movement: CatholicMovement.SEGUE_ME,
+    dateStr: '2026-08-30',
+    startTime: '19:00',
+    endTime: '20:30',
+    location: 'Igreja Matriz',
+    description: 'Missa mensal do Movimento Segue-me com a participação de todos os jovens e tios (Último domingo do mês).',
+    status: 'confirmed',
+    checklist: [],
+    roles: [],
+    observation: 'Uso da camiseta oficial do Segue-me.',
+    synced: false,
+    createdAt: new Date().toISOString()
+  },
+  {
+    id: 'segue-me-missa-09-2026',
+    title: 'Missa do Segue-me (Setembro)',
+    movement: CatholicMovement.SEGUE_ME,
+    dateStr: '2026-09-27',
+    startTime: '19:00',
+    endTime: '20:30',
+    location: 'Igreja Matriz',
+    description: 'Missa mensal do Movimento Segue-me com a participação de todos os jovens e tios (Último domingo do mês).',
+    status: 'confirmed',
+    checklist: [],
+    roles: [],
+    observation: 'Uso da camiseta oficial do Segue-me.',
+    synced: false,
+    createdAt: new Date().toISOString()
+  },
+  {
+    id: 'segue-me-missa-10-2026',
+    title: 'Missa do Segue-me (Outubro)',
+    movement: CatholicMovement.SEGUE_ME,
+    dateStr: '2026-10-25',
+    startTime: '19:00',
+    endTime: '20:30',
+    location: 'Igreja Matriz',
+    description: 'Missa mensal do Movimento Segue-me com a participação de todos os jovens e tios (Último domingo do mês).',
+    status: 'confirmed',
+    checklist: [],
+    roles: [],
+    observation: 'Uso da camiseta oficial do Segue-me.',
+    synced: false,
+    createdAt: new Date().toISOString()
+  },
+  {
+    id: 'segue-me-missa-11-2026',
+    title: 'Missa do Segue-me (Novembro)',
+    movement: CatholicMovement.SEGUE_ME,
+    dateStr: '2026-11-29',
+    startTime: '19:00',
+    endTime: '20:30',
+    location: 'Igreja Matriz',
+    description: 'Missa mensal do Movimento Segue-me com a participação de todos os jovens e tios (Último domingo do mês).',
+    status: 'confirmed',
+    checklist: [],
+    roles: [],
+    observation: 'Uso da camiseta oficial do Segue-me.',
+    synced: false,
+    createdAt: new Date().toISOString()
+  },
+  {
+    id: 'segue-me-missa-12-2026',
+    title: 'Missa do Segue-me (Dezembro)',
+    movement: CatholicMovement.SEGUE_ME,
+    dateStr: '2026-12-27',
+    startTime: '19:00',
+    endTime: '20:30',
+    location: 'Igreja Matriz',
+    description: 'Missa mensal do Movimento Segue-me com a participação de todos os jovens e tios (Último domingo do mês).',
+    status: 'confirmed',
+    checklist: [],
+    roles: [],
+    observation: 'Uso da camiseta oficial do Segue-me.',
+    synced: false,
+    createdAt: new Date().toISOString()
+  }
+];
+
+export const generatePreceitoEvents2026 = (): Mission[] => {
+  const events: Mission[] = [];
+  
+  // 1. Sunday Masses
+  const start = new Date('2026-01-01T12:00:00');
+  const end = new Date('2026-12-31T12:00:00');
+  const current = new Date(start);
+  
+  while (current <= end) {
+    if (current.getDay() === 0) { // Sunday
+      const dStr = current.toISOString().split('T')[0];
+      const isPast = dStr <= '2026-06-06';
+      
+      events.push({
+        id: `preceito-domingo-${dStr}`,
+        title: 'Missa Dominical (Preceito)',
+        movement: CatholicMovement.PAROQUIAL,
+        dateStr: dStr,
+        startTime: '19:00',
+        endTime: '20:30',
+        location: 'Igreja Matriz',
+        description: 'Celebração da Santa Missa de preceito dominical. "Lembra-te de santificar o dia do Senhor".',
+        status: isPast ? 'completed' : 'preparing',
+        attended: isPast ? true : undefined,
+        checklist: [],
+        roles: [],
+        observation: 'Preceito dominical cumprido com alegria e fidelidade católica.',
+        synced: false,
+        createdAt: new Date().toISOString()
+      });
+    }
+    current.setDate(current.getDate() + 1);
+  }
+  
+  // 2. Weekday Preceito days in Brazil
+  const weekdayPreceitos = [
+    {
+      dateStr: '2026-01-01',
+      title: 'Sol. de Santa Maria, Mãe de Deus',
+      startTime: '19:00',
+      endTime: '20:30',
+      location: 'Igreja Matriz',
+      description: 'Solenidade de Santa Maria, Mãe de Deus. Dia de Preceito e Confraternização Universal.',
+      observation: 'Presença em comunhão e ação de graças no início do ano.'
+    },
+    {
+      dateStr: '2026-06-04',
+      title: 'Solenidade de Corpus Christi',
+      startTime: '14:00',
+      endTime: '20:00',
+      location: 'Esplanada dos Ministérios',
+      description: 'Solenidade do Santíssimo Sacramento do Corpo e Sangue de Cristo (Corpus Christi).',
+      observation: 'Corpus Christi: estive das 14h às 20h ajudando na confecção dos tapetes e participando da procissão na Esplanada.'
+    },
+    {
+      dateStr: '2026-10-12',
+      title: 'Solenidade de N. Sra. Aparecida (Padroeira do Brasil)',
+      startTime: '19:00',
+      endTime: '20:30',
+      location: 'Igreja Matriz',
+      description: 'Solenidade de Nossa Senhora da Conceição Aparecida, Rainha e Padroeira do Brasil.',
+      observation: 'Festa da Padroeira, dia de graça e intercessão pela nossa nação.'
+    },
+    {
+      dateStr: '2026-12-08',
+      title: 'Solenidade da Imaculada Conceição',
+      startTime: '19:00',
+      endTime: '20:30',
+      location: 'Igreja Matriz',
+      description: 'Solenidade da Imaculada Conceição da Bem-aventurada Virgem Maria.',
+      observation: 'Solenidade da Imaculada Conceição, dia de preceito com amor mariano.'
+    },
+    {
+      dateStr: '2026-12-25',
+      title: 'Solenidade do Natal de Nosso Senhor',
+      startTime: '19:00',
+      endTime: '20:30',
+      location: 'Igreja Matriz',
+      description: 'Solenidade do Nascimento de Nosso Senhor Jesus Cristo (Natal).',
+      observation: 'Celebração e ação de graças em família pelo Verbo Divino que se fez carne.'
+    }
+  ];
+  
+  weekdayPreceitos.forEach((p) => {
+    const isPast = p.dateStr <= '2026-06-06';
+    events.push({
+      id: `preceito-solenidade-${p.dateStr}`,
+      title: p.title,
+      movement: CatholicMovement.PAROQUIAL,
+      dateStr: p.dateStr,
+      startTime: p.startTime,
+      endTime: p.endTime,
+      location: p.location,
+      description: p.description,
+      status: isPast ? 'completed' : 'preparing',
+      attended: isPast ? true : undefined,
+      checklist: [],
+      roles: [],
+      observation: p.observation,
+      synced: false,
+      createdAt: new Date().toISOString()
+    });
+  });
+  
+  return events;
+};
+
 export default function App() {
   const [missions, setMissions] = useState<Mission[]>([]);
   const [currentDate, setCurrentDate] = useState<Date>(new Date(2026, 5, 6)); // Default June 2026
@@ -126,9 +508,8 @@ export default function App() {
   const [accessToken, setAccessToken] = useState<string | null>(null);
   
   // Mobile and view optimization states
-  const [activeTab, setActiveTab] = useState<'calendar' | 'secretary' | 'backlog'>('calendar');
   const [selectedDay, setSelectedDay] = useState<string>('2026-06-06');
-  const [currentMainSection, setCurrentMainSection] = useState<'personal' | 'catalog'>('personal');
+  const [currentMainSection, setCurrentMainSection] = useState<'personal' | 'retrospective' | 'catalog'>('personal');
   
   // Modals Visibility
   const [isDayModalOpen, setIsDayModalOpen] = useState(false);
@@ -146,17 +527,38 @@ export default function App() {
 
   // Load initial data and bind Auth listeners
   useEffect(() => {
+    let loadedMissions = DEFAULT_MISSIONS;
     const localDb = localStorage.getItem('missions_db_maria');
-    if (localDb) {
-      try {
-        setMissions(JSON.parse(localDb));
-      } catch (e) {
-        setMissions(DEFAULT_MISSIONS);
+    const legacyDb = localStorage.getItem('missions_db');
+    const veryLegacyDb = localStorage.getItem('events');
+
+    let allLoaded: any[] = [];
+    
+    // Aggregate from all possible local stores to prevent data loss
+    [veryLegacyDb, legacyDb, localDb].forEach(dbStr => {
+      if (dbStr && dbStr !== '[]') {
+        try {
+          const parsed = JSON.parse(dbStr);
+          if (Array.isArray(parsed)) {
+            allLoaded = [...allLoaded, ...parsed];
+          }
+        } catch (e) {}
       }
-    } else {
-      setMissions(DEFAULT_MISSIONS);
-      localStorage.setItem('missions_db_maria', JSON.stringify(DEFAULT_MISSIONS));
+    });
+
+    if (allLoaded.length > 0) {
+      // deduplicate by id
+      const uniqueMissions = new Map();
+      allLoaded.forEach(m => {
+        if (m && m.id && !uniqueMissions.has(m.id)) {
+          uniqueMissions.set(m.id, m);
+        }
+      });
+      loadedMissions = Array.from(uniqueMissions.values());
     }
+
+    localStorage.setItem('missions_db_maria', JSON.stringify(loadedMissions));
+    setMissions(loadedMissions);
 
     // Initialize Auth listener
     initAuth(
@@ -183,23 +585,53 @@ export default function App() {
   useEffect(() => {
     if (user) {
       addLog('Conectando à nuvem para sincronia em tempo real...');
+      
+      // Proactively recover from old schemas right after login
+      recoverLostMissions(user.uid).then((recovered) => {
+        if (recovered.length > 0) {
+          addLog(`Buscando ${recovered.length} eventos antigos encontrados...`);
+          recovered.forEach(m => uploadMission(user.uid, m));
+        }
+      }).catch(() => {});
+      
       const unsubscribe = subscribeToMissions(user.uid, (cloudMissions) => {
-        // Merge logic: keep local unsynced missions, update/add from cloud, remove deleted from cloud
-        setMissions((prevMissions) => {
-          const cloudIds = new Set(cloudMissions.map((m) => m.id));
-          
-          // Start with cloud missions (source of truth for synced data)
-          const merged = [...cloudMissions];
-          
-          // Add back ONLY local missions that were locally unsynced
-          prevMissions.forEach((lm) => {
-            if (!lm.synced && !cloudIds.has(lm.id)) {
-              merged.push(lm);
-            }
-          });
-          
-          localStorage.setItem('missions_db_maria', JSON.stringify(merged));
-          return merged;
+        let currentLocal: Mission[] = [];
+        const localDb = localStorage.getItem('missions_db_maria');
+        const legacyDb = localStorage.getItem('missions_db');
+        const veryLegacyDb = localStorage.getItem('events');
+
+        [veryLegacyDb, legacyDb, localDb].forEach(dbStr => {
+          if (dbStr && dbStr !== '[]') {
+            try {
+              const parsed = JSON.parse(dbStr);
+              if (Array.isArray(parsed)) {
+                // Deduplicate during merge
+                parsed.forEach(p => {
+                  if (!currentLocal.find(c => c.id === p.id)) {
+                    currentLocal.push(p);
+                  }
+                });
+              }
+            } catch (e) {}
+          }
+        });
+        
+        const cloudIds = new Set(cloudMissions.map((m) => m.id));
+        const merged = [...cloudMissions];
+        const toUpload: Mission[] = [];
+        
+        currentLocal.forEach((lm) => {
+          if (!cloudIds.has(lm.id)) {
+            merged.push(lm);
+            toUpload.push(lm);
+          }
+        });
+        
+        setMissions(merged);
+        localStorage.setItem('missions_db_maria', JSON.stringify(merged));
+        
+        toUpload.forEach(m => {
+          uploadMission(user.uid, m).catch(console.error);
         });
         
         addLog(`Sincronizado! Dados atualizados com a nuvem.`);
@@ -208,6 +640,50 @@ export default function App() {
       return () => unsubscribe();
     }
   }, [user]);
+
+  // Automatically inject important Segue-me events requested by the user
+  useEffect(() => {
+    if (!localStorage.getItem('added_segue_me_events_2026_fixed_v4') && missions.length > 0) {
+      const existingIds = new Set(missions.map((m) => m.id));
+      const filteredNew = SEGUE_ME_EVENTS_TO_ADD.filter((m) => !existingIds.has(m.id));
+      
+      if (filteredNew.length > 0) {
+        const merged = [...missions, ...filteredNew];
+        saveMissionsState(merged);
+        addLog(`Integrados ${filteredNew.length} novos eventos e missas do Segue-me!`);
+        
+        if (user) {
+          filteredNew.forEach((m) => {
+            uploadMission(user.uid, m).catch(console.error);
+          });
+        }
+      }
+      localStorage.setItem('added_segue_me_events_2026_fixed_v4', 'true');
+    }
+  }, [missions, user]);
+
+  // Automatically inject important Preceito and Sunday Mass events requested by the user
+  useEffect(() => {
+    if (!localStorage.getItem('added_preceito_events_2026_v9') && missions.length > 0) {
+      const existingIds = new Set(missions.map((m) => m.id));
+      const preceitoEvents = generatePreceitoEvents2026();
+      const filteredNew = preceitoEvents.filter((m) => !existingIds.has(m.id));
+      
+      if (filteredNew.length > 0) {
+        const merged = [...missions, ...filteredNew];
+        saveMissionsState(merged);
+        addLog(`Integradas ${filteredNew.length} missas dominicais e solenidades de preceito de 2026!`);
+        
+        if (user) {
+          filteredNew.forEach((m) => {
+            uploadMission(user.uid, m).catch(console.error);
+          });
+        }
+      }
+      localStorage.setItem('added_preceito_events_256_v9', 'true'); // Let's also set v9 to ensure fresh run if they had previous versions
+      localStorage.setItem('added_preceito_events_2026_v9', 'true');
+    }
+  }, [missions, user]);
 
   // Save cache with local Storage of the browser
   const saveMissionsState = (updated: Mission[]) => {
@@ -251,16 +727,64 @@ export default function App() {
 
     try {
       const style = getMovementStyle(mission.movement);
+
+      // Parse date parts safely
+      const dateParts = mission.dateStr.split('-');
+      const year = parseInt(dateParts[0], 10) || 2026;
+      const month = (parseInt(dateParts[1], 10) || 6) - 1; // 0-based month
+      const day = parseInt(dateParts[2], 10) || 1;
+
+      let startHr = 19, startMn = 0;
+      if (mission.startTime) {
+        const parts = mission.startTime.split(':');
+        if (parts.length >= 2) {
+          startHr = parseInt(parts[0], 10) ?? 19;
+          startMn = parseInt(parts[1], 10) ?? 0;
+        }
+      }
+
+      let endHr = 20, endMn = 30;
+      if (mission.endTime) {
+        const parts = mission.endTime.split(':');
+        if (parts.length >= 2) {
+          endHr = parseInt(parts[0], 10) ?? 20;
+          endMn = parseInt(parts[1], 10) ?? 30;
+        }
+      }
+
+      let startDate = new Date(year, month, day, startHr, startMn, 0);
+      let endDate = new Date(year, month, day, endHr, endMn, 0);
+
+      // Auto-correct empty or invalid negative time range
+      if (isNaN(startDate.getTime())) {
+        startDate = new Date(year, month, day, 19, 0, 0);
+      }
+      if (isNaN(endDate.getTime()) || endDate.getTime() <= startDate.getTime()) {
+        // Fallback to start + 1 hour to prevent empty time range on Google Calendar
+        endDate = new Date(startDate.getTime() + 60 * 60 * 1000);
+      }
+
+      // Helper to output direct timezone-unaware ISO formatted matching local time
+      const formatToLocalISO = (d: Date) => {
+        const yyyy = d.getFullYear();
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        const hh = String(d.getHours()).padStart(2, '0');
+        const min = String(d.getMinutes()).padStart(2, '0');
+        const ss = String(d.getSeconds()).padStart(2, '0');
+        return `${yyyy}-${mm}-${dd}T${hh}:${min}:${ss}`;
+      };
+
       const eventPayload = {
         summary: `⛪ [${style?.name || 'Missão'}] ${mission.title}`,
         location: mission.location || '',
         description: `${mission.description || ''}\n\n---\nMinhas Atividades / Atuação no dia: ${mission.roles?.join(', ') || 'Nenhuma selecionada'}\nObservações adicionais: ${mission.observation || 'Sem observações'}\n\nOrganizado via Agenda Eu Missionário`,
         start: {
-          dateTime: `${mission.dateStr}T${mission.startTime || '19:00'}:00`,
+          dateTime: formatToLocalISO(startDate),
           timeZone: 'America/Sao_Paulo',
         },
         end: {
-          dateTime: `${mission.dateStr}T${mission.endTime || '20:30'}:00`,
+          dateTime: formatToLocalISO(endDate),
           timeZone: 'America/Sao_Paulo',
         },
       };
@@ -281,13 +805,33 @@ export default function App() {
       });
 
       if (!res.ok) {
-        throw new Error(`Google API: ${res.statusText}`);
+        if (res.status === 401) {
+          // Clear cached local storage token so next login will trigger a fresh signInWithPopup flow
+          localStorage.removeItem('_cached_google_token');
+          sessionStorage.removeItem('_g_connected');
+          throw new Error('401_UNAUTHORIZED');
+        }
+        let details = '';
+        try {
+          const errData = await res.json();
+          details = errData?.error?.message || JSON.stringify(errData);
+        } catch (_) {
+          try {
+            details = await res.text();
+          } catch (__) {
+            details = res.statusText || `Status ${res.status}`;
+          }
+        }
+        throw new Error(`Google API (Status ${res.status}): ${details}`);
       }
 
       const data = await res.json();
       return data.id || null;
-    } catch (e) {
+    } catch (e: any) {
       console.error('Erro ao empurrar evento ao Google Agenda:', e);
+      if (e instanceof Error && e.message === '401_UNAUTHORIZED') {
+        throw e;
+      }
       return null;
     }
   };
@@ -320,16 +864,53 @@ export default function App() {
     const updatedMissions = [...missions];
 
     for (const unsynced of unsyncedMissions) {
-      const gId = await pushEventToGoogleCalendar(unsynced, token);
-      if (gId) {
-        const idx = updatedMissions.findIndex((item) => item.id === unsynced.id);
-        if (idx !== -1) {
-          updatedMissions[idx] = {
-            ...updatedMissions[idx],
-            googleEventId: gId,
-            synced: true,
-          };
-          count++;
+      try {
+        const gId = await pushEventToGoogleCalendar(unsynced, token);
+        if (gId) {
+          const idx = updatedMissions.findIndex((item) => item.id === unsynced.id);
+          if (idx !== -1) {
+            updatedMissions[idx] = {
+              ...updatedMissions[idx],
+              googleEventId: gId,
+              synced: true,
+            };
+            count++;
+          }
+        }
+      } catch (err: any) {
+        if (err?.message === '401_UNAUTHORIZED') {
+          addLog('Token do Google expirado ou inválido. Solicitando autorização...');
+          try {
+            const reauth = await googleSignIn();
+            if (reauth) {
+              setAccessToken(reauth.accessToken);
+              setUser(reauth.user);
+              token = reauth.accessToken;
+              // Retry pushing with updated token
+              const gId = await pushEventToGoogleCalendar(unsynced, reauth.accessToken);
+              if (gId) {
+                const idx = updatedMissions.findIndex((item) => item.id === unsynced.id);
+                if (idx !== -1) {
+                  updatedMissions[idx] = {
+                    ...updatedMissions[idx],
+                    googleEventId: gId,
+                    synced: true,
+                  };
+                  count++;
+                }
+              }
+            } else {
+              setAccessToken(null);
+              break;
+            }
+          } catch (reauthErr) {
+            setAccessToken(null);
+            addLog('A renovação do login do Google foi cancelada ou falhou.');
+            alert('Sua sessão do Google Agenda expirou. Por favor, conecte novamente clicando no botão "Sincronizar com Google Agenda".');
+            break;
+          }
+        } else {
+          console.error(err);
         }
       }
     }
@@ -427,7 +1008,35 @@ export default function App() {
   const handleSaveMission = async (payload: Partial<Mission>) => {
     setIsFormModalOpen(false);
     
-    if (payload.id) {
+    const isEditing = !!payload.id;
+    const rc = payload.recurrence;
+    const isRecurrent = rc && rc.frequency !== 'none';
+    const missionsToCreate: Mission[] = [];
+
+    const baseMission = {
+      title: payload.title || 'Sem título',
+      movement: payload.movement || CatholicMovement.PAROQUIAL,
+      startTime: payload.startTime || '19:00',
+      endTime: payload.endTime || '20:30',
+      location: payload.location || '',
+      description: payload.description || '',
+      status: payload.status || (payload.dateStr ? 'preparing' : 'backlog'),
+      checklist: payload.checklist || [],
+      instagramUrl: payload.instagramUrl || '',
+      instagramImgUrl: payload.instagramImgUrl,
+      movementLogoUrl: payload.movementLogoUrl,
+      tipo: payload.tipo,
+      roles: payload.roles || [],
+      observation: payload.observation || '',
+      dailySchedules: payload.dailySchedules,
+      endDateStr: payload.endDateStr,
+      recurrence: payload.recurrence ? { ...payload.recurrence, frequency: 'none' as const } : undefined,
+      cardColor: payload.cardColor,
+      synced: false,
+      createdAt: new Date().toISOString()
+    };
+
+    if (isEditing) {
       // Update
       const updated = missions.map(async (m) => {
         if (m.id === payload.id) {
@@ -438,10 +1047,34 @@ export default function App() {
           } as Mission;
 
           if (accessToken && merged.dateStr && !isSimulatedOffline) {
-            const gId = await pushEventToGoogleCalendar(merged, accessToken);
-            if (gId) {
-              merged.googleEventId = gId;
-              merged.synced = true;
+            try {
+              const gId = await pushEventToGoogleCalendar(merged, accessToken);
+              if (gId) {
+                merged.googleEventId = gId;
+                merged.synced = true;
+              }
+            } catch (err: any) {
+              if (err?.message === '401_UNAUTHORIZED') {
+                addLog('Token expirado ao atualizar. Renovando...');
+                try {
+                  const reauth = await googleSignIn();
+                  if (reauth) {
+                    setAccessToken(reauth.accessToken);
+                    setUser(reauth.user);
+                    const gId = await pushEventToGoogleCalendar(merged, reauth.accessToken);
+                    if (gId) {
+                      merged.googleEventId = gId;
+                      merged.synced = true;
+                    }
+                  } else {
+                    setAccessToken(null);
+                  }
+                } catch (reauthErr) {
+                  setAccessToken(null);
+                  addLog('A renovação do login falhou.');
+                  alert('Sua sessão expirou. Conecte-se novamente ao Google Agenda.');
+                }
+              }
             }
           }
           addLog(`Ajustadas informações da missão "${merged.title}".`);
@@ -450,51 +1083,124 @@ export default function App() {
         return m;
       });
 
-      Promise.all(updated).then((res) => {
-        saveMissionsState(res);
+      const updatedMissionsResolved = await Promise.all(updated);
+
+      if (isRecurrent && rc) {
+        if (rc.frequency === 'weekly' && rc.daysOfWeek && rc.daysOfWeek.length > 0) {
+          const start = new Date((payload.dateStr || '2026-06-06') + 'T12:00:00');
+          const end = rc.endDate ? new Date(rc.endDate + 'T12:00:00') : new Date(start);
+          if (!rc.endDate) end.setMonth(end.getMonth() + 3);
+
+          const current = new Date(start);
+          while (current <= end) {
+            const dStr = current.toISOString().split('T')[0];
+            if (rc.daysOfWeek.includes(current.getDay()) && dStr !== payload.dateStr) {
+              missionsToCreate.push({
+                id: `mission-${Date.now()}-${dStr}-${Math.random().toString(36).substring(2, 9)}`,
+                dateStr: dStr,
+                ...baseMission,
+                recurrence: { ...rc, frequency: 'none' as const }
+              });
+            }
+            current.setDate(current.getDate() + 1);
+          }
+        } else if (rc.frequency === 'custom' && rc.customDates) {
+          rc.customDates.forEach((dStr, idx) => {
+            if (dStr !== payload.dateStr) {
+              missionsToCreate.push({
+                id: `mission-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 9)}`,
+                dateStr: dStr,
+                ...baseMission,
+                recurrence: { ...rc, frequency: 'none' }
+              });
+            }
+          });
+        }
+      }
+
+      if (missionsToCreate.length > 0) {
+        let currentToken = accessToken;
+        const finalExtraMissions: Mission[] = [];
+        for (const nm of missionsToCreate) {
+          const mission = { ...nm };
+          if (currentToken && mission.dateStr && !isSimulatedOffline) {
+            try {
+              const gId = await pushEventToGoogleCalendar(mission, currentToken);
+              if (gId) {
+                mission.googleEventId = gId;
+                mission.synced = true;
+              }
+            } catch (err: any) {
+              if (err?.message === '401_UNAUTHORIZED') {
+                addLog('Token expirado ao agendar. Renovando...');
+                try {
+                  const reauth = await googleSignIn();
+                  if (reauth) {
+                    setAccessToken(reauth.accessToken);
+                    setUser(reauth.user);
+                    currentToken = reauth.accessToken;
+                    const gId = await pushEventToGoogleCalendar(mission, reauth.accessToken);
+                    if (gId) {
+                      mission.googleEventId = gId;
+                      mission.synced = true;
+                    }
+                  } else {
+                    setAccessToken(null);
+                    currentToken = null;
+                  }
+                } catch (reauthErr) {
+                  setAccessToken(null);
+                  currentToken = null;
+                  addLog('A renovação do login falhou.');
+                  alert('Sua sessão expirou. Conecte-se novamente ao Google Agenda.');
+                }
+              }
+            }
+          }
+          finalExtraMissions.push(mission);
+          if (user) {
+            uploadMission(user.uid, mission).catch(console.error);
+          }
+        }
+
+        saveMissionsState([...finalExtraMissions, ...updatedMissionsResolved]);
         if (user) {
-          const updatedItem = res.find((m) => m.id === payload.id);
+          const updatedItem = updatedMissionsResolved.find((m) => m.id === payload.id);
           if (updatedItem) {
             uploadMission(user.uid, updatedItem).catch(console.error);
           }
         }
-      });
+        addLog(`Atualizada missão master e integrada(s) ${finalExtraMissions.length} nova(s) ocorrência(s).`);
+      } else {
+        saveMissionsState(updatedMissionsResolved);
+        if (user) {
+          const updatedItem = updatedMissionsResolved.find((m) => m.id === payload.id);
+          if (updatedItem) {
+            uploadMission(user.uid, updatedItem).catch(console.error);
+          }
+        }
+      }
 
     } else {
       // Creation
-      const isRecurrent = payload.recurrence && payload.recurrence.frequency !== 'none';
-      const missionsToCreate: Mission[] = [];
-
-      const baseMission = {
-        title: payload.title || 'Sem título',
-        movement: payload.movement || CatholicMovement.PAROQUIAL,
-        startTime: payload.startTime || '19:00',
-        endTime: payload.endTime || '20:30',
-        location: payload.location || '',
-        description: payload.description || '',
-        status: payload.status || (payload.dateStr ? 'preparing' : 'backlog'),
-        checklist: [],
-        instagramUrl: payload.instagramUrl || '',
-        instagramImgUrl: payload.instagramImgUrl,
-        movementLogoUrl: payload.movementLogoUrl,
-        tipo: payload.tipo,
-        roles: payload.roles || [],
-        observation: payload.observation || '',
-        dailySchedules: payload.dailySchedules,
-        endDateStr: payload.endDateStr,
-        recurrence: payload.recurrence,
-        synced: false,
-        createdAt: new Date().toISOString()
-      };
-
       if (!isRecurrent) {
         missionsToCreate.push({
-          id: 'mission-' + Date.now(),
+          id: 'mission-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9),
           dateStr: payload.dateStr || '',
           ...baseMission
         });
       } else {
         const rc = payload.recurrence!;
+        // Ensure the main event is created first for custom recurrences/duplications
+        if (rc.frequency === 'custom' && payload.dateStr) {
+          missionsToCreate.push({
+            id: 'mission-' + Date.now() + '-main-' + Math.random().toString(36).substring(2, 9),
+            dateStr: payload.dateStr,
+            ...baseMission,
+            recurrence: { ...rc, frequency: 'none' as const }
+          });
+        }
+
         if (rc.frequency === 'weekly' && rc.daysOfWeek && rc.daysOfWeek.length > 0) {
           // Generate weekly occurrences for 3 months (or until end date)
           const start = new Date((payload.dateStr || '2026-06-06') + 'T12:00:00');
@@ -506,27 +1212,29 @@ export default function App() {
             if (rc.daysOfWeek.includes(current.getDay())) {
               const dStr = current.toISOString().split('T')[0];
               missionsToCreate.push({
-                id: `mission-${Date.now()}-${dStr}`,
+                id: `mission-${Date.now()}-${dStr}-${Math.random().toString(36).substring(2, 9)}`,
                 dateStr: dStr,
                 ...baseMission,
-                recurrence: { ...rc, frequency: 'none' } // Mark individual as non-recurrent to avoid confusion
+                recurrence: { ...rc, frequency: 'none' as const } // Mark individual as non-recurrent to avoid confusion
               });
             }
             current.setDate(current.getDate() + 1);
           }
         } else if (rc.frequency === 'custom' && rc.customDates) {
           rc.customDates.forEach((dStr, idx) => {
-            missionsToCreate.push({
-              id: `mission-${Date.now()}-${idx}`,
-              dateStr: dStr,
-              ...baseMission,
-              recurrence: { ...rc, frequency: 'none' }
-            });
+            if (dStr !== payload.dateStr) {
+              missionsToCreate.push({
+                id: `mission-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 9)}`,
+                dateStr: dStr,
+                ...baseMission,
+                recurrence: { ...rc, frequency: 'none' }
+              });
+            }
           });
         } else {
           // Fallback to single
           missionsToCreate.push({
-            id: 'mission-' + Date.now(),
+            id: 'mission-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9),
             dateStr: payload.dateStr || '',
             ...baseMission
           });
@@ -535,14 +1243,42 @@ export default function App() {
 
       // Sync and save all created missions
       const syncAndSave = async () => {
+        let currentToken = accessToken;
         const finalMissions: Mission[] = [];
         for (const nm of missionsToCreate) {
           const mission = { ...nm };
-          if (accessToken && mission.dateStr && !isSimulatedOffline) {
-            const gId = await pushEventToGoogleCalendar(mission, accessToken);
-            if (gId) {
-              mission.googleEventId = gId;
-              mission.synced = true;
+          if (currentToken && mission.dateStr && !isSimulatedOffline) {
+            try {
+              const gId = await pushEventToGoogleCalendar(mission, currentToken);
+              if (gId) {
+                mission.googleEventId = gId;
+                mission.synced = true;
+              }
+            } catch (err: any) {
+              if (err?.message === '401_UNAUTHORIZED') {
+                addLog('Token expirado ao agendar. Renovando...');
+                try {
+                  const reauth = await googleSignIn();
+                  if (reauth) {
+                    setAccessToken(reauth.accessToken);
+                    setUser(reauth.user);
+                    currentToken = reauth.accessToken;
+                    const gId = await pushEventToGoogleCalendar(mission, reauth.accessToken);
+                    if (gId) {
+                      mission.googleEventId = gId;
+                      mission.synced = true;
+                    }
+                  } else {
+                    setAccessToken(null);
+                    currentToken = null;
+                  }
+                } catch (reauthErr) {
+                  setAccessToken(null);
+                  currentToken = null;
+                  addLog('A renovação do login falhou.');
+                  alert('Sua sessão expirou. Conecte-se novamente ao Google Agenda.');
+                }
+              }
             }
           }
           finalMissions.push(mission);
@@ -582,11 +1318,33 @@ export default function App() {
       if (accessToken && target.googleEventId && !isSimulatedOffline) {
         try {
           addLog('Excluindo evento sincronizado no Google Agenda...');
-          await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${target.googleEventId}`, {
+          const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${target.googleEventId}`, {
             method: 'DELETE',
             headers: { Authorization: `Bearer ${accessToken}` },
           });
-          addLog('Exclusão sincronizada com o Google Calendar.');
+          if (res.status === 401) {
+            localStorage.removeItem('_cached_google_token');
+            sessionStorage.removeItem('_g_connected');
+            setAccessToken(null);
+            addLog('Token expirado ao excluir. Tentando renovar...');
+            try {
+              const reauth = await googleSignIn();
+              if (reauth) {
+                setAccessToken(reauth.accessToken);
+                setUser(reauth.user);
+                await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${target.googleEventId}`, {
+                  method: 'DELETE',
+                  headers: { Authorization: `Bearer ${reauth.accessToken}` },
+                });
+                addLog('Exclusão sincronizada com o Google Agenda após renovação.');
+              }
+            } catch (reauthErr) {
+              addLog('A renovação falhou durante a exclusão.');
+              alert('Sua sessão expirou. Conecte-se novamente ao Google Agenda.');
+            }
+          } else {
+            addLog('Exclusão sincronizada com o Google Calendar.');
+          }
         } catch (error) {
           console.error(error);
         }
@@ -655,6 +1413,39 @@ export default function App() {
     setIsFormModalOpen(true);
   };
 
+  // Update attendance of a completed event (Save to database & state)
+  const handleUpdateAttendance = (missionId: string, attended: boolean) => {
+    const updated = missions.map((m) => {
+      if (m.id === missionId) {
+        const updatedMission = {
+          ...m,
+          attended,
+          status: attended ? 'completed' as const : m.status,
+          synced: false
+        };
+        if (user) {
+          uploadMission(user.uid, updatedMission).catch(console.error);
+        }
+        return updatedMission;
+      }
+      return m;
+    });
+    saveMissionsState(updated);
+    addLog(`Presença atualizada: ${attended ? 'Compareceu ⛪' : 'Não pôde comparecer ❌'}`);
+  };
+
+  const isEventPast = (m: Mission) => {
+    if (m.status === 'backlog' || !m.dateStr || !m.endTime) return false;
+    try {
+      const eventEnd = new Date(`${m.dateStr}T${m.endTime}`);
+      return new Date() >= eventEnd;
+    } catch (e) {
+      return false;
+    }
+  };
+
+  const hasPendingAttendance = missions.some(m => isEventPast(m) && m.attended === undefined);
+
   const pendingCount = missions.filter((m) => !m.synced && m.dateStr).length;
 
   return (
@@ -669,7 +1460,7 @@ export default function App() {
       />
 
       {/* Styled Top Workspace Header bar */}
-      <header className="bg-white/80 backdrop-blur-md border-b border-purple-100 py-3.5 px-6 shadow-xs sticky top-0 md:relative z-45">
+      <header className="bg-white/80 backdrop-blur-md border border-b border-purple-100 py-3.5 px-6 shadow-xs z-45">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-purple-700 text-purple-100 flex items-center justify-center shadow-md shadow-purple-900/10 border border-purple-800 select-none">
@@ -709,31 +1500,24 @@ export default function App() {
             ) : (
               <button
                 onClick={handleGoogleLogin}
-                className="text-xs py-1.5 px-3 border border-purple-250 hover:bg-purple-50 cursor-pointer flex items-center gap-2 rounded-xl bg-white text-purple-800 font-bold"
+                className="text-[10px] py-1 px-2.5 border border-purple-200 hover:bg-purple-150 cursor-pointer flex items-center gap-1.5 rounded-lg bg-white text-purple-800 font-bold"
                 id="google-calendar-signin-btn"
               >
-                <Globe className="w-4 h-4 text-purple-400 mr-0.5" />
-                Sincronizar com Google Agenda
+                <Globe className="w-3.5 h-3.5 text-purple-400" />
+                Sincronizar Google Agenda
               </button>
             )}
-
-            {/* Quick scheduling button */}
-            <button
-              onClick={() => handleAddMission({ dateStr: '2026-06-06' })}
-              className="bg-purple-700 hover:bg-purple-600 text-white font-extrabold py-2 px-4 rounded-xl text-xs flex items-center gap-1.5 shadow-md transition hover:scale-102 active:scale-95 cursor-pointer"
-            >
-              <Plus className="w-4 h-4" /> Registrar Missão
-            </button>
           </div>
         </div>
       </header>
 
       {/* Premium Main Section Switcher */}
       <div className="max-w-7xl w-full mx-auto px-4 md:px-6 mt-4">
-        <div className="flex bg-purple-100/50 p-1.5 rounded-2xl border border-purple-200/50 shadow-2xs max-w-sm sm:max-w-md">
+        <div className="flex bg-purple-100/50 p-1.5 rounded-2xl border border-purple-200/50 shadow-2xs max-w-sm sm:max-w-xl transition-all">
           <button
+            type="button"
             onClick={() => setCurrentMainSection('personal')}
-            className={`flex-1 py-2 px-3 rounded-xl text-xs font-black transition flex items-center justify-center gap-1.5 cursor-pointer ${
+            className={`flex-1 py-2 px-3 rounded-xl text-[11px] sm:text-xs font-black transition flex items-center justify-center gap-1.5 cursor-pointer ${
               currentMainSection === 'personal'
                 ? 'bg-purple-900 text-white shadow-md font-black border border-purple-950/10'
                 : 'text-purple-600 hover:text-purple-950 font-bold'
@@ -741,10 +1525,27 @@ export default function App() {
           >
             <Church className={`w-4 h-4 ${currentMainSection === 'personal' ? 'text-purple-200' : 'text-purple-500'}`} /> Agenda Pessoal
           </button>
+
+          <button
+            type="button"
+            onClick={() => setCurrentMainSection('retrospective')}
+            className={`flex-1 py-2 px-3 rounded-xl text-[11px] sm:text-xs font-black transition flex items-center justify-center gap-1.5 cursor-pointer relative ${
+              currentMainSection === 'retrospective'
+                ? 'bg-[#1E1B4B] text-indigo-100 shadow-md font-black border border-indigo-950/10'
+                : 'text-indigo-600 hover:text-indigo-950 font-bold'
+            }`}
+          >
+            <Award className={`w-4 h-4 ${currentMainSection === 'retrospective' ? 'text-indigo-300' : 'text-indigo-600'}`} /> 
+            <span>Retrospectiva</span>
+            {hasPendingAttendance && (
+              <span className="w-2.5 h-2.5 rounded-full bg-fuchsia-500 border-2 border-white animate-pulse" />
+            )}
+          </button>
           
           <button
+            type="button"
             onClick={() => setCurrentMainSection('catalog')}
-            className={`flex-1 py-2 px-3 rounded-xl text-xs font-black transition flex items-center justify-center gap-1.5 cursor-pointer ${
+            className={`flex-1 py-2 px-3 rounded-xl text-[11px] sm:text-xs font-black transition flex items-center justify-center gap-1.5 cursor-pointer ${
               currentMainSection === 'catalog'
                 ? 'bg-[#5B1E31] text-rose-100 shadow-md font-black border border-rose-500/10'
                 : 'text-rose-800 hover:text-rose-950 font-bold'
@@ -755,7 +1556,7 @@ export default function App() {
         </div>
       </div>
 
-      {currentMainSection === 'personal' ? (
+      {currentMainSection === 'personal' && (
         <>
           {/* Styled Event Carrossel Warn Banner */}
           <div className="max-w-7xl w-full mx-auto px-4 md:px-6 mt-4">
@@ -771,95 +1572,36 @@ export default function App() {
           </div>
 
           {/* Primary Workspace Area */}
-          <main className="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-            
-            {/* Mobile quick tabs swiper */}
-            <div className="lg:hidden col-span-1 grid grid-cols-3 gap-1 bg-white p-1 rounded-2xl border border-purple-100 shadow-xs mb-2">
-              {(['calendar', 'secretary', 'backlog'] as const).map((tab) => {
-                let activeColor = 'bg-purple-750 text-white shadow-xs font-black';
-                if (tab === 'calendar') activeColor = 'bg-gradient-to-r from-indigo-700 to-indigo-650 text-white shadow-md font-black';
-                if (tab === 'secretary') activeColor = 'bg-gradient-to-r from-fuchsia-700 to-fuchsia-650 text-white shadow-md font-black';
-                if (tab === 'backlog') activeColor = 'bg-gradient-to-r from-amber-600 to-amber-500 text-white shadow-md font-black';
-
-                return (
-                  <button
-                    key={tab}
-                    onClick={() => setActiveTab(tab)}
-                    className={`py-2 text-[11px] font-black uppercase rounded-xl transition cursor-pointer ${
-                      activeTab === tab
-                        ? activeColor
-                        : 'text-purple-500 hover:text-purple-800'
-                    }`}
-                  >
-                    {tab === 'calendar' ? '📅 Agenda' : tab === 'secretary' ? '⛪ Secretária' : '💡 Ideias'}
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Sidebar/Collapsible Panel: Conversations with virtual sister (Irmã Maria) */}
-            <div className={`col-span-1 lg:col-span-3 h-[570px] flex flex-col ${activeTab !== 'secretary' ? 'hidden lg:flex' : ''}`}>
-              <div className="flex-1">
-                <SecretariaVirtual onAddMission={(suggested) => {
-                  handleAddMission(suggested);
-                  addLog(`Suporte de dotação pela secretária.`);
-                }} />
-              </div>
-
-              {/* Operation registers card */}
-              <div className="mt-4 bg-white rounded-2xl border border-purple-100 p-4 shrink-0 shadow-xs">
-                <div className="flex items-center gap-2 mb-2 pb-2 border-b border-purple-50">
-                  <Bell className="w-4 h-4 text-purple-400 animate-bounce" />
-                  <h4 className="text-[9px] uppercase font-black tracking-widest text-purple-500">Histórico de Atividades</h4>
-                </div>
-                <div className="space-y-1 max-h-24 overflow-y-auto font-mono text-[9px] text-purple-400">
-                  {systemLogs.map((log, idx) => (
-                    <p key={idx} className="truncate select-text">
-                      {log}
-                    </p>
-                  ))}
-                </div>
-                
-                <button
-                  onClick={handleRequestNotifyPermission}
-                  className="w-full mt-3 bg-purple-50 hover:bg-purple-100 border border-purple-200 text-purple-700 rounded-lg py-1 px-2 text-[10px] font-bold transition flex items-center justify-center gap-1.5 cursor-pointer"
-                >
-                  <Bell className="w-3.5 h-3.5 text-purple-700" /> Ativar Notificações Push
-                </button>
-              </div>
-            </div>
-
-            {/* Calendar View central cell */}
-            <div className={`col-span-1 lg:col-span-6 space-y-6 ${activeTab !== 'calendar' ? 'hidden lg:block' : ''}`}>
-              <CalendarView
-                missions={missions}
-                currentDate={currentDate}
-                setCurrentDate={setCurrentDate}
-                onSelectDay={(day) => {
-                  setSelectedDay(day);
-                  setIsDayModalOpen(true);
-                  addLog(`Dia selecionado na agenda: ${day}`);
-                }}
-                onSelectMission={(m) => {
-                  setSelectedDay(m.dateStr);
-                  setIsDayModalOpen(true);
-                  addLog(`Missão expandida: ${m.title}`);
-                }}
-              />
-            </div>
-
-            {/* Backlog View cell (ideas box) */}
-            <div className={`col-span-1 lg:col-span-3 h-full ${activeTab !== 'backlog' ? 'hidden lg:block' : ''}`}>
-              <BacklogView
-                missions={missions}
-                onAddBacklog={handleAddBacklog}
-                onSchedule={handleScheduleBacklog}
-                onDelete={handleDeleteMission}
-              />
-            </div>
+          <main className="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 space-y-6">
+            <CalendarView
+              missions={missions}
+              currentDate={currentDate}
+              setCurrentDate={setCurrentDate}
+              onSelectDay={(day) => {
+                setSelectedDay(day);
+                setIsDayModalOpen(true);
+                addLog(`Dia selecionado na agenda: ${day}`);
+              }}
+              onSelectMission={(m) => {
+                setSelectedDay(m.dateStr);
+                setIsDayModalOpen(true);
+                addLog(`Missão expandida: ${m.title}`);
+              }}
+            />
           </main>
         </>
-      ) : (
+      )}
+
+      {currentMainSection === 'retrospective' && (
+        <div className="max-w-7xl w-full mx-auto p-4 md:p-6">
+          <RetrospectivaView 
+            missions={missions}
+            onUpdateAttendance={handleUpdateAttendance}
+          />
+        </div>
+      )}
+
+      {currentMainSection === 'catalog' && (
         <div className="max-w-7xl w-full mx-auto p-4 md:p-6">
           <CatholicEventsCalendar
             personalMissions={missions}

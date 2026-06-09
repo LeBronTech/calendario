@@ -21,7 +21,7 @@ import {
   Share2,
 } from 'lucide-react';
 import { Mission, CatholicMovement, ChecklistItem } from '../types';
-import { MOVEMENT_DATA } from '../utils/catholicData';
+import { MOVEMENT_DATA, getMovementStyle } from '../utils/catholicData';
 
 interface MissionCardProps {
   key?: string | number;
@@ -41,7 +41,7 @@ export default function MissionCard({
   const [newCheckItem, setNewCheckItem] = useState('');
   const [timeLeft, setTimeLeft] = useState<{ days: number; hours: number; minutes: number; seconds: number } | null>(null);
 
-  const style = MOVEMENT_DATA[mission.movement];
+  const style = getMovementStyle(mission.movement);
 
   // Countdown timer calculations
   useEffect(() => {
@@ -173,7 +173,7 @@ export default function MissionCard({
           />
           <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/40 to-transparent" />
           <div className="absolute bottom-4 left-4 right-4">
-            <span className={`text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded text-white ${style.colorClass} shadow-md`}>
+            <span className={`text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded text-white ${mission.cardColor || style?.colorClass || 'bg-purple-600'} shadow-md`}>
               {style.fullName}
             </span>
             <h3 className="text-xl font-black mt-2 tracking-tight text-white drop-shadow-md">
@@ -190,7 +190,7 @@ export default function MissionCard({
           <div className="flex items-start justify-between gap-3">
             <div className="space-y-1 flex-1">
               <div className="flex flex-wrap items-center gap-2">
-                <span className={`text-[9px] font-bold text-white px-2 py-0.5 rounded shadow-sm ${style?.colorClass}`}>
+                <span className={`text-[9px] font-bold text-white px-2 py-0.5 rounded shadow-sm ${mission.cardColor || style?.colorClass || 'bg-purple-600'}`}>
                   {style?.name || 'Missão'}
                 </span>
                 <span className="text-[10px] text-slate-500 font-bold bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-md flex items-center gap-1">
