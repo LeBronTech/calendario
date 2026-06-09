@@ -506,6 +506,8 @@ export const generatePreceitoEvents2026 = (): Mission[] => {
 export default function App() {
   const [missions, setMissions] = useState<Mission[]>([]);
   const [syncPromptData, setSyncPromptData] = useState<{ cloudMissions: Mission[], cloudSettings?: any } | null>(null);
+  const [cloudUploadPrompt, setCloudUploadPrompt] = useState<{ active: boolean, localCount: number, gCount: number } | null>(null);
+  const [cloudUploadProgress, setCloudUploadProgress] = useState<{ current: number, total: number } | null>(null);
   const [isSyncingUser, setIsSyncingUser] = useState(false);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [currentDate, setCurrentDate] = useState<Date>(new Date(2026, 5, 6)); // Default June 2026
@@ -897,11 +899,29 @@ export default function App() {
 
   const handleForceSyncAllToCloud = async () => {
     if (!user) return;
+    
+    // Count events
+    const localOnly = missions.filter(m => !m.googleEventId).length;
+    const gConnected = missions.filter(m => m.googleEventId).length;
+    
+    setCloudUploadPrompt({
+      active: true,
+      localCount: localOnly,
+      gCount: gConnected
+    });
+  };
+
+  const executeCloudUpload = async () => {
+    if (!user) return;
+    setCloudUploadPrompt(null);
     setIsSyncingUser(true);
-    addLog('Sincronizando todos os dados locais com a nuvem...');
+    addLog('Iniciando envio para nuvem...');
+    
     try {
-      for (const m of missions) {
-        await uploadMission(user.uid, m);
+      setCloudUploadProgress({ current: 0, total: missions.length });
+      for (let i = 0; i < missions.length; i++) {
+        await uploadMission(user.uid, missions[i]);
+        setCloudUploadProgress({ current: i + 1, total: missions.length });
       }
       
       // settings
@@ -913,12 +933,13 @@ export default function App() {
       await uploadSettings(user.uid, settingsPayload);
       
       addLog('Sincronização completa. Dados na nuvem e locais estão idênticos.');
-      alert('Tudo sincronizado na Nuvem com sucesso!');
+      alert('Todos os eventos subiram para a nuvem com sucesso!');
     } catch (e) {
       console.error(e);
-      alert('Erro ao tentar sincronizar os dados na Nuvem. Verifique sua conexão.');
+      alert('Erro ao tentar processar o upload das missões. Verifique sua conexão.');
     } finally {
       setIsSyncingUser(false);
+      setCloudUploadProgress(null);
     }
   };
 
@@ -1833,6 +1854,56 @@ export default function App() {
                 </div>
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cloud Upload Prompt Modal */}
+      {cloudUploadPrompt && cloudUploadPrompt.active && (
+        <div className="fixed inset-0 bg-blue-950/60 backdrop-blur-sm flex items-center justify-center p-4 z-[90]">
+          <div className="bg-white rounded-2xl border-2 border-indigo-200 shadow-2xl w-full max-w-md p-5 animate-scale-up flex flex-col">
+            <h2 className="text-lg font-black text-indigo-950 flex items-center gap-2 mb-3">
+              <Upload className="w-5 h-5 text-indigo-600" />
+              Subir Eventos
+            </h2>
+            <p className="text-xs text-slate-600 leading-relaxed font-medium">
+              Identificamos <strong>{missions.length} eventos</strong> no seu dispositivo atual.<br/>
+              Sendo <strong>{cloudUploadPrompt.gCount} conectados ao Google</strong> e <strong>{cloudUploadPrompt.localCount} Offline</strong>.<br/><br/>
+              Deseja subir todos para a nuvem substituindo a versão de lá? Eles ficarão disponíveis ao vivo nos outros dispositivos conectados nesta conta.
+            </p>
+            
+            {cloudUploadProgress ? (
+              <div className="mt-5">
+                <div className="flex items-center justify-between text-[11px] font-bold text-slate-700 mb-2">
+                  <span>Enviando para Nuvem...</span>
+                  <span>{cloudUploadProgress.current} / {cloudUploadProgress.total}</span>
+                </div>
+                <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden border border-slate-200 relative">
+                  <div 
+                    className="bg-indigo-500 h-full transition-all duration-300"
+                    style={{ width: `${Math.round((cloudUploadProgress.current / cloudUploadProgress.total) * 100)}%` }}
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="flex gap-3 justify-end mt-6">
+                <button
+                  type="button"
+                  onClick={() => setCloudUploadPrompt(null)}
+                  className="px-4 py-2 text-xs font-bold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-lg cursor-pointer transition"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={executeCloudUpload}
+                  className="px-4 py-2 text-xs font-black text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-sm cursor-pointer transition flex items-center gap-2 hover:shadow-md"
+                >
+                  <Upload className="w-4 h-4" />
+                  Sim, Subir Todos
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
