@@ -918,7 +918,10 @@ export default function App() {
           const parts = m.dateStr.split('-');
           theDate = `${parts[2]}/${parts[1]}/${parts[0]}`;
         }
-        text += `- [${theDate || 'Sem Data'} ${m.startTime || ''} às ${m.endTime || ''}] ${m.title}\n`;
+        let timeStr = '';
+        if (m.startTime && m.endTime) timeStr = ` ${m.startTime} às ${m.endTime}`;
+        else if (m.startTime) timeStr = ` ${m.startTime}`;
+        text += `- [${theDate || 'Sem Data'}${timeStr}] ${m.title}\n`;
         if (m.location) text += `  📍 Local: ${m.location}\n`;
         if (m.movement) text += `  ⛪ Movimento/Grupo: ${m.movement}\n`;
         if (m.status) text += `  📊 Status do preparo: ${m.status === 'confirmed' ? 'Confirmado' : m.status === 'preparing' ? 'Em Preparação' : m.status === 'cancelled' ? 'Cancelado' : m.status === 'done' ? 'Concluído' : 'Sem previsão'}\n`;
@@ -945,7 +948,7 @@ export default function App() {
 
   const executeCloudUpload = async () => {
     if (!user) return;
-    setCloudUploadPrompt(null);
+    // Keep prompt active to show the progress bar
     setIsSyncingUser(true);
     addLog('Iniciando envio para nuvem...');
     
@@ -972,6 +975,7 @@ export default function App() {
     } finally {
       setIsSyncingUser(false);
       setCloudUploadProgress(null);
+      setCloudUploadPrompt(null);
     }
   };
 
@@ -1912,8 +1916,8 @@ export default function App() {
               Upload da Agenda Completa
             </h2>
             <p className="text-xs text-slate-600 leading-relaxed font-medium">
-              Identificamos <strong>{missions.length} eventos</strong> na sua agenda local.<br/><br/>
-              Ao confirmar, enviaremos todo o seu calendário local para a Nuvem de Backup em tempo real. Isso irá sobrescrever as missões atuais para os outros dispositivos desta conta.
+              ✅ <strong>Sua agenda já salva tudo automaticamente em tempo-real!</strong><br/><br/>
+              Mas se você precisa forçar um backup completo, identificamos <strong>{missions.length} eventos</strong> na sua agenda local agora. Ao confirmar, todos eles serão reenviados para a Nuvem, ficando disponíveis imediatamente nos outros dispositivos desta conta.
             </p>
             
             {cloudUploadProgress ? (

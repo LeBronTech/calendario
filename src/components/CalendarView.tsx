@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Plus } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Plus, Copy } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Mission, CatholicMovement } from '../types';
 import { getMovementStyle, isMissionOnDate } from '../utils/catholicData';
@@ -169,6 +169,52 @@ export default function CalendarView({
     setCurrentDate(new Date(today.getFullYear(), today.getMonth(), 1));
   };
 
+  const handleCopyMonth = async () => {
+    try {
+      const targetMonthStr = String(month + 1).padStart(2, '0');
+      const targetYearStr = String(year);
+      
+      const monthMissions = missions.filter(m => {
+        if (!m.dateStr) return false;
+        const [y, M] = m.dateStr.split('-');
+        return y === targetYearStr && M === targetMonthStr;
+      }).sort((a, b) => new Date(a.dateStr).getTime() - new Date(b.dateStr).getTime());
+
+      let text = `Resumo de Eventos de ${MONTHS_PT[month]} de ${year} (${monthMissions.length} eventos):\n\n`;
+      
+      monthMissions.forEach(m => {
+        const parts = m.dateStr.split('-');
+        const theDate = `${parts[2]}/${parts[1]}/${parts[0]}`;
+        
+        let timeStr = '';
+        if (m.startTime && m.endTime) timeStr = ` ${m.startTime} às ${m.endTime}`;
+        else if (m.startTime) timeStr = ` ${m.startTime}`;
+        
+        text += `- [${theDate}${timeStr}] ${m.title}\n`;
+        if (m.location) text += `  📍 Local: ${m.location}\n`;
+        if (m.movement) text += `  ⛪ Movimento/Grupo: ${m.movement}\n`;
+        if (m.status) text += `  📊 Status do preparo: ${m.status === 'confirmed' ? 'Confirmado' : m.status === 'preparing' ? 'Em Preparação' : m.status === 'cancelled' ? 'Cancelado' : m.status === 'done' ? 'Concluído' : 'Sem previsão'}\n`;
+        if (m.description) text += `  📝 Descrição: ${m.description}\n`;
+        if (m.roles && m.roles.length > 0) text += `  🙋 Serviços: ${m.roles.join(', ')}\n`;
+        if (m.observation) text += `  ⚠️ Observações: ${m.observation}\n`;
+        if (m.instagramUrl) text += `  📱 Instagram: ${m.instagramUrl}\n`;
+        if (m.checklist && m.checklist.length > 0) {
+          text += `  ✅ Checklist:\n`;
+          m.checklist.forEach(c => {
+            text += `     ${c.done ? '[x]' : '[ ]'} ${c.text}\n`;
+          });
+        }
+        text += '\n';
+      });
+
+      await navigator.clipboard.writeText(text);
+      alert(`Os eventos de ${MONTHS_PT[month]} foram copiados com sucesso!`);
+    } catch (err) {
+      console.error(err);
+      alert('Erro ao tentar copiar os dados do mês.');
+    }
+  };
+
   const handleTouchStart = (e: React.TouchEvent) => {
     setTouchStart(e.targetTouches[0].clientX);
     setTouchStartY(e.targetTouches[0].clientY);
@@ -242,7 +288,16 @@ export default function CalendarView({
           >
             Mês de Hoje
           </button>
-          <div className="flex bg-[#F5EEFD] p-0.5 rounded-lg border border-purple-150 ml-auto sm:ml-0">
+          
+          <button
+            onClick={handleCopyMonth}
+            className="p-1.5 ml-1 rounded-md bg-purple-50 hover:bg-purple-100 text-purple-600 border border-purple-200 transition"
+            title="Copiar texto puro dos eventos deste mês"
+          >
+            <Copy className="w-4 h-4" />
+          </button>
+
+          <div className="flex bg-[#F5EEFD] p-0.5 rounded-lg border border-purple-150 ml-auto sm:ml-2">
             <button
               onClick={handlePrevMonth}
               id="prev-month-btn"
