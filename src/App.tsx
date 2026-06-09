@@ -900,15 +900,47 @@ export default function App() {
   const handleForceSyncAllToCloud = async () => {
     if (!user) return;
     
-    // Count events
-    const localOnly = missions.filter(m => !m.googleEventId).length;
-    const gConnected = missions.filter(m => m.googleEventId).length;
-    
     setCloudUploadPrompt({
       active: true,
-      localCount: localOnly,
-      gCount: gConnected
+      localCount: missions.length,
+      gCount: 0
     });
+  };
+
+  const handleCopyMissionsText = async () => {
+    try {
+      const sortedMissions = [...missions].sort((a, b) => new Date(a.dateStr).getTime() - new Date(b.dateStr).getTime());
+      let text = `Resumo de Eventos (${sortedMissions.length} eventos):\n\n`;
+      
+      sortedMissions.forEach(m => {
+        let theDate = m.dateStr;
+        if (m.dateStr) {
+          const parts = m.dateStr.split('-');
+          theDate = `${parts[2]}/${parts[1]}/${parts[0]}`;
+        }
+        text += `- [${theDate || 'Sem Data'} ${m.startTime || ''} às ${m.endTime || ''}] ${m.title}\n`;
+        if (m.location) text += `  📍 Local: ${m.location}\n`;
+        if (m.movement) text += `  ⛪ Movimento/Grupo: ${m.movement}\n`;
+        if (m.status) text += `  📊 Status do preparo: ${m.status === 'confirmed' ? 'Confirmado' : m.status === 'preparing' ? 'Em Preparação' : m.status === 'cancelled' ? 'Cancelado' : m.status === 'done' ? 'Concluído' : 'Sem previsão'}\n`;
+        if (m.description) text += `  📝 Descrição: ${m.description}\n`;
+        if (m.roles && m.roles.length > 0) text += `  🙋 Serviços: ${m.roles.join(', ')}\n`;
+        if (m.observation) text += `  ⚠️ Observações: ${m.observation}\n`;
+        if (m.instagramUrl) text += `  📱 Instagram: ${m.instagramUrl}\n`;
+        if (m.checklist && m.checklist.length > 0) {
+          text += `  ✅ Checklist:\n`;
+          m.checklist.forEach(c => {
+            text += `     ${c.done ? '[x]' : '[ ]'} ${c.text}\n`;
+          });
+        }
+        text += '\n';
+      });
+
+      await navigator.clipboard.writeText(text);
+      alert('Eventos copiados para a área de transferência com sucesso!');
+    } catch (err) {
+      console.error(err);
+      alert('Erro ao tentar copiar os dados.');
+    }
   };
 
   const executeCloudUpload = async () => {
@@ -1762,18 +1794,31 @@ export default function App() {
           <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto justify-end">
             {/* Google Sync and Login button widgets */}
             {user && (
-              <button
-                onClick={handleForceSyncAllToCloud}
-                disabled={isSyncingUser}
-                className="text-[10px] py-1.5 px-3 border border-indigo-200 hover:bg-indigo-50 cursor-pointer flex items-center gap-1.5 rounded-lg bg-white text-indigo-800 font-black shadow-3xs hover:shadow transition disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isSyncingUser ? (
-                   <RefreshCw className="w-3.5 h-3.5 text-indigo-500 animate-spin" />
-                ) : (
-                   <Globe className="w-3.5 h-3.5 text-indigo-500" />
-                )}
-                {isSyncingUser ? 'Enviando...' : 'Forçar Sincronização'}
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleCopyMissionsText}
+                  className="text-[10px] py-1.5 px-3 border border-indigo-200 hover:bg-slate-50 cursor-pointer flex items-center gap-1.5 rounded-lg bg-white text-slate-700 font-black shadow-3xs hover:shadow transition"
+                  title="Copiar texto puro (Resumo dos eventos)"
+                >
+                  <svg className="w-3.5 h-3.5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  </svg>
+                  Copiar Texto
+                </button>
+
+                <button
+                  onClick={handleForceSyncAllToCloud}
+                  disabled={isSyncingUser}
+                  className="text-[10px] py-1.5 px-3 border border-indigo-200 hover:bg-indigo-50 cursor-pointer flex items-center gap-1.5 rounded-lg bg-white text-indigo-800 font-black shadow-3xs hover:shadow transition disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isSyncingUser ? (
+                     <RefreshCw className="w-3.5 h-3.5 text-indigo-500 animate-spin" />
+                  ) : (
+                     <Globe className="w-3.5 h-3.5 text-indigo-500" />
+                  )}
+                  {isSyncingUser ? 'Enviando...' : 'Forçar Sincronização'}
+                </button>
+              </div>
             )}
 
             <div className="flex items-center bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-xl p-1.5 pr-3 text-xs gap-2 transition max-w-sm">
@@ -1864,12 +1909,11 @@ export default function App() {
           <div className="bg-white rounded-2xl border-2 border-indigo-200 shadow-2xl w-full max-w-md p-5 animate-scale-up flex flex-col">
             <h2 className="text-lg font-black text-indigo-950 flex items-center gap-2 mb-3">
               <Upload className="w-5 h-5 text-indigo-600" />
-              Subir Eventos
+              Upload da Agenda Completa
             </h2>
             <p className="text-xs text-slate-600 leading-relaxed font-medium">
-              Identificamos <strong>{missions.length} eventos</strong> no seu dispositivo atual.<br/>
-              Sendo <strong>{cloudUploadPrompt.gCount} conectados ao Google</strong> e <strong>{cloudUploadPrompt.localCount} Offline</strong>.<br/><br/>
-              Deseja subir todos para a nuvem substituindo a versão de lá? Eles ficarão disponíveis ao vivo nos outros dispositivos conectados nesta conta.
+              Identificamos <strong>{missions.length} eventos</strong> na sua agenda local.<br/><br/>
+              Ao confirmar, enviaremos todo o seu calendário local para a Nuvem de Backup em tempo real. Isso irá sobrescrever as missões atuais para os outros dispositivos desta conta.
             </p>
             
             {cloudUploadProgress ? (
