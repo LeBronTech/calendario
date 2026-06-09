@@ -14,7 +14,9 @@ import {
   Award,
   Layers,
   RefreshCw,
-  Upload
+  Upload,
+  Cloud,
+  Download
 } from 'lucide-react';
 import { CatholicMovement, Mission } from './types';
 import { MOVEMENT_DATA, getMovementStyle } from './utils/catholicData';
@@ -30,9 +32,10 @@ import RetrospectivaView from './components/RetrospectivaView';
 
 // Auth Imports
 import { googleSignIn, logout, initAuth } from './utils/firebaseAuth';
-import { downloadMissions, uploadMission, removeMission, subscribeToMissions, recoverLostMissions, uploadSettings, subscribeToSettings } from './utils/firebaseDb';
+import { downloadMissions, uploadMission, removeMission, subscribeToMissions, recoverLostMissions, uploadSettings, subscribeToSettings, downloadSettings } from './utils/firebaseDb';
 import { User } from 'firebase/auth';
 
+import { RESTORED_OLD_MISSIONS } from './utils/restoredData';
 const DEFAULT_MISSIONS: Mission[] = [
   {
     id: 'seed-1',
@@ -528,6 +531,7 @@ export default function App() {
   const [missionToDeleteSeries, setMissionToDeleteSeries] = useState(false);
   const [isSimulatedOffline, setSimulatedOffline] = useState(false);
   const [notificationPermission, setNotificationPermission] = useState('default');
+  const [isBackupModalOpen, setIsBackupModalOpen] = useState(false);
 
   // Logs stream representing virtual secretary historical activity
   const [systemLogs, setSystemLogs] = useState<string[]>([
@@ -555,6 +559,12 @@ export default function App() {
         } catch (e) {}
       }
     });
+
+    const hasMigratedOldMissions = localStorage.getItem('migrated_old_missions_v1');
+    if (!hasMigratedOldMissions) {
+      allLoaded = [...allLoaded, ...RESTORED_OLD_MISSIONS];
+      localStorage.setItem('migrated_old_missions_v1', 'true');
+    }
 
     if (allLoaded.length > 0) {
       // deduplicate by id
@@ -608,21 +618,28 @@ export default function App() {
       
       let initialSyncDone = false;
       let cloudCachedSettings: any = null;
+      
       const unsubSettings = subscribeToSettings(user.uid, (settings) => {
         cloudCachedSettings = settings;
         if (settings) {
-           let updated = false;
-           if (settings.saved_custom_catholic_movements) {
-             localStorage.setItem('saved_custom_catholic_movements', settings.saved_custom_catholic_movements);
-             updated = true;
-           }
-           if (settings.catholic_movement_colors_maria) {
-             localStorage.setItem('catholic_movement_colors_maria', settings.catholic_movement_colors_maria);
-             updated = true;
-           }
-           if (updated) {
-             window.dispatchEvent(new Event('customMovementsChanged'));
-           }
+            let updated = false;
+            if (settings.saved_custom_catholic_movements) {
+              const localCustom = localStorage.getItem('saved_custom_catholic_movements');
+              if (localCustom !== settings.saved_custom_catholic_movements) {
+                localStorage.setItem('saved_custom_catholic_movements', settings.saved_custom_catholic_movements);
+                updated = true;
+              }
+            }
+            if (settings.catholic_movement_colors_maria) {
+              const localColors = localStorage.getItem('catholic_movement_colors_maria');
+              if (localColors !== settings.catholic_movement_colors_maria) {
+                localStorage.setItem('catholic_movement_colors_maria', settings.catholic_movement_colors_maria);
+                updated = true;
+              }
+            }
+            if (updated) {
+              window.dispatchEvent(new Event('customMovementsChanged'));
+            }
         }
       });
 
@@ -649,20 +666,6 @@ export default function App() {
             }
           });
           
-          const hasMeaningfulLocal = currentLocal.some(m => !m.id.startsWith('seed-') && !m.id.startsWith('preceito-') && !m.id.startsWith('segueme-'));
-          
-          // Se tiver dados na nuvem E dados locais (além das amostras), perguntar qual usar
-          if (cloudMissions.length > 0 && hasMeaningfulLocal) {
-             const localIds = new Set(currentLocal.map(m => m.id));
-             const missingInCloud = currentLocal.filter(m => !cloudMissions.find(cm => cm.id === m.id));
-             const missingInLocal = cloudMissions.filter(cm => !localIds.has(cm.id));
-             
-             if (missingInCloud.length > 0 || missingInLocal.length > 0) {
-               setSyncPromptData({ cloudMissions, cloudSettings: cloudCachedSettings });
-               return; // Skip auto resolving
-             }
-          }
-          
           const cloudIds = new Set(cloudMissions.map((m) => m.id));
           const merged = [...cloudMissions];
           const toUpload: Mission[] = [];
@@ -681,17 +684,10 @@ export default function App() {
             uploadMission(user.uid, m).catch(console.error);
           });
 
-          addLog(`Sincronizado inicial! Dados atualizados com a nuvem.`);
+          addLog(`Sincronização inicial: ${toUpload.length} novos eventos locais enviados para a nuvem.`);
         } else {
-          setSyncPromptData((prev) => {
-             if (prev !== null) {
-                return { ...prev, cloudMissions };
-             } else {
-                setMissions(cloudMissions);
-                localStorage.setItem('missions_db_maria', JSON.stringify(cloudMissions));
-                return null;
-             }
-          });
+          setMissions(cloudMissions);
+          localStorage.setItem('missions_db_maria', JSON.stringify(cloudMissions));
         }
       });
 
@@ -700,6 +696,29 @@ export default function App() {
         unsubSettings();
       };
     }
+  }, [user]);
+
+  // Listen to custom movements changes and automatically upload to cloud settings in real-time
+  useEffect(() => {
+    const handleCustomMovementsChanged = async () => {
+      if (user) {
+        const savedCustom = localStorage.getItem('saved_custom_catholic_movements');
+        const colorsObj = localStorage.getItem('catholic_movement_colors_maria');
+        const settingsPayload: any = {};
+        if (savedCustom) settingsPayload.saved_custom_catholic_movements = savedCustom;
+        if (colorsObj) settingsPayload.catholic_movement_colors_maria = colorsObj;
+        
+        try {
+          await uploadSettings(user.uid, settingsPayload);
+          addLog('Movimentos e cores personalizados atualizados em tempo real na nuvem.');
+        } catch (e) {
+          console.error('Error syncing custom settings:', e);
+        }
+      }
+    };
+
+    window.addEventListener('customMovementsChanged', handleCustomMovementsChanged);
+    return () => window.removeEventListener('customMovementsChanged', handleCustomMovementsChanged);
   }, [user]);
 
   // Automatically inject important Segue-me events requested by the user
@@ -976,6 +995,123 @@ export default function App() {
       setIsSyncingUser(false);
       setCloudUploadProgress(null);
       setCloudUploadPrompt(null);
+      setIsBackupModalOpen(false);
+    }
+  };
+
+  const executeCloudDownload = async () => {
+    if (!user) return;
+    const confirmRestore = window.confirm(
+      'ALERTA DE SEGURANÇA ⚠️\n\nIsso irá APAGAR os eventos atuais deste navegador e substituí-los pela versão oficial salva na Nuvem do Google para esta conta. Caso tenha eventos neste navegador que não foram para a nuvem, faça o backup antes.\n\nTem certeza de que deseja restaurar e uniformizar o dispositivo com a Nuvem agora?'
+    );
+    if (!confirmRestore) return;
+
+    setIsSyncingUser(true);
+    addLog('Baixando dados e configurações da nuvem...');
+    try {
+      const cloudMissions = await downloadMissions(user.uid);
+      const cloudSettings = await downloadSettings(user.uid);
+      
+      setMissions(cloudMissions);
+      localStorage.setItem('missions_db_maria', JSON.stringify(cloudMissions));
+      
+      if (cloudSettings) {
+        if (cloudSettings.saved_custom_catholic_movements) {
+          localStorage.setItem('saved_custom_catholic_movements', cloudSettings.saved_custom_catholic_movements);
+        } else {
+          localStorage.removeItem('saved_custom_catholic_movements');
+        }
+        if (cloudSettings.catholic_movement_colors_maria) {
+          localStorage.setItem('catholic_movement_colors_maria', cloudSettings.catholic_movement_colors_maria);
+        } else {
+          localStorage.removeItem('catholic_movement_colors_maria');
+        }
+        window.dispatchEvent(new Event('customMovementsChanged'));
+      } else {
+        localStorage.removeItem('saved_custom_catholic_movements');
+        localStorage.removeItem('catholic_movement_colors_maria');
+        window.dispatchEvent(new Event('customMovementsChanged'));
+      }
+      
+      addLog('Restauração completa! Navegador atualizado com as informações da nuvem.');
+      alert('Informações restauradas da nuvem com sucesso!');
+      setIsBackupModalOpen(false);
+    } catch (e) {
+      console.error(e);
+      alert('Falha ao baixar dados da nuvem. Verifique sua conexão.');
+    } finally {
+      setIsSyncingUser(false);
+    }
+  };
+
+  const executeCloudMerge = async () => {
+    if (!user) return;
+    setIsSyncingUser(true);
+    addLog('Iniciando mesclagem inteligente com a nuvem...');
+    try {
+      const cloudMissions = await downloadMissions(user.uid);
+      const cloudSettings = await downloadSettings(user.uid);
+      
+      let currentLocal = [...missions];
+      const cloudIds = new Set(cloudMissions.map((m) => m.id));
+      const merged = [...cloudMissions];
+      const toUpload: Mission[] = [];
+      
+      currentLocal.forEach((lm) => {
+        if (!cloudIds.has(lm.id)) {
+          merged.push(lm);
+          toUpload.push(lm);
+        }
+      });
+      
+      // Update missions
+      setMissions(merged);
+      localStorage.setItem('missions_db_maria', JSON.stringify(merged));
+      
+      // Upload missing to cloud
+      for (let i = 0; i < toUpload.length; i++) {
+        await uploadMission(user.uid, toUpload[i]);
+      }
+
+      // Settings merge
+      if (cloudSettings) {
+        if (cloudSettings.saved_custom_catholic_movements) {
+          try {
+            const cloudCustom = JSON.parse(cloudSettings.saved_custom_catholic_movements);
+            const localCustomStr = localStorage.getItem('saved_custom_catholic_movements');
+            const localCustom = localCustomStr ? JSON.parse(localCustomStr) : {};
+            const mergedCustom = { ...cloudCustom, ...localCustom };
+            localStorage.setItem('saved_custom_catholic_movements', JSON.stringify(mergedCustom));
+          } catch (e) {}
+        }
+        if (cloudSettings.catholic_movement_colors_maria) {
+          try {
+            const cloudColors = JSON.parse(cloudSettings.catholic_movement_colors_maria);
+            const localColorsStr = localStorage.getItem('catholic_movement_colors_maria');
+            const localColors = localColorsStr ? JSON.parse(localColorsStr) : {};
+            const mergedColors = { ...cloudColors, ...localColors };
+            localStorage.setItem('catholic_movement_colors_maria', JSON.stringify(mergedColors));
+          } catch (e) {}
+        }
+        window.dispatchEvent(new Event('customMovementsChanged'));
+        
+        // Push merged settings
+        const mergedCustomStr = localStorage.getItem('saved_custom_catholic_movements');
+        const mergedColorsStr = localStorage.getItem('catholic_movement_colors_maria');
+        const settingsPayload: any = {};
+        if (mergedCustomStr) settingsPayload.saved_custom_catholic_movements = mergedCustomStr;
+        if (mergedColorsStr) settingsPayload.catholic_movement_colors_maria = mergedColorsStr;
+        await uploadSettings(user.uid, settingsPayload);
+      }
+      
+      addLog('Mesclagem inteligente efetuada com sucesso!');
+      alert('Dados locais e em nuvem combinados com sucesso!');
+      setIsBackupModalOpen(false);
+    } catch (e) {
+      console.error(e);
+      alert('Ocorreu um erro durante a mesclagem de dados.');
+    } finally {
+      setIsSyncingUser(false);
     }
   };
 
@@ -1811,16 +1947,16 @@ export default function App() {
                 </button>
 
                 <button
-                  onClick={handleForceSyncAllToCloud}
+                  onClick={() => setIsBackupModalOpen(true)}
                   disabled={isSyncingUser}
                   className="text-[10px] py-1.5 px-3 border border-indigo-200 hover:bg-indigo-50 cursor-pointer flex items-center gap-1.5 rounded-lg bg-white text-indigo-800 font-black shadow-3xs hover:shadow transition disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {isSyncingUser ? (
                      <RefreshCw className="w-3.5 h-3.5 text-indigo-500 animate-spin" />
                   ) : (
-                     <Globe className="w-3.5 h-3.5 text-indigo-500" />
+                     <Cloud className="w-3.5 h-3.5 text-indigo-500" />
                   )}
-                  {isSyncingUser ? 'Enviando...' : 'Forçar Sincronização'}
+                  {isSyncingUser ? 'Sincronizando...' : 'Nuvem & Backup ⚡'}
                 </button>
               </div>
             )}
@@ -1848,59 +1984,92 @@ export default function App() {
           </div>
         </div>
       </header>
-      
-      {/* Sync Prompt Modal */}
-      {syncPromptData && (
-        <div className="fixed inset-0 bg-blue-950/60 backdrop-blur-sm flex items-center justify-center p-4 z-[90]">
-          <div className="bg-white rounded-2xl border-2 border-indigo-200 shadow-2xl w-full max-w-md p-5 space-y-4 animate-scale-up">
-            <h2 className="text-lg font-black text-indigo-950 flex items-center gap-2">
-              <RefreshCw className="w-5 h-5 text-indigo-600" />
-              Sincronização Necessária
-            </h2>
-            <p className="text-xs text-slate-600 leading-relaxed font-medium">
-              Encontramos dados diferentes salvos na Nuvem (outro dispositivo) e no seu Navegador atual. Qual versão você deseja usar?
-            </p>
-            <div className="space-y-2 mt-4">
+
+      {/* Central de Backup e Sincronização Modal */}
+      {isBackupModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-[90] animate-fade-in">
+          <div className="bg-white rounded-3xl border border-purple-100 shadow-2xl w-full max-w-lg p-6 space-y-6 animate-scale-up">
+            <div className="flex items-start justify-between">
+              <div className="space-y-1">
+                <h2 className="text-xl font-black text-slate-900 flex items-center gap-2">
+                  <Cloud className="w-5.5 h-5.5 text-purple-700" />
+                  Sincronização & Backup Nuvem
+                </h2>
+                <p className="text-xs text-slate-500 font-medium leading-relaxed font-sans">
+                  Gerencie manualmente a persistência e unificação dos seus dados. Seu aplicativo já sincroniza em tempo real, mas estas funções garantem o alinhamento definitivo entre múltiplos dispositivos.
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-3 font-sans">
+              {/* Option 1: Backup Full */}
+              <div className="p-3.5 rounded-2xl border border-slate-100 bg-slate-50/50 hover:bg-slate-50 transition flex items-start gap-4">
+                <div className="p-3 bg-indigo-50 text-indigo-700 rounded-xl">
+                  <Upload className="w-5 h-5" />
+                </div>
+                <div className="flex-1 space-y-1">
+                  <span className="block text-xs font-black text-slate-900">Fazer Backup Completo (Enviar para Nuvem)</span>
+                  <span className="block text-[10px] text-slate-500 font-medium leading-relaxed">
+                    Salva todos os eventos ({missions.length}) e movimentos criados neste navegador na nuvem. Use se este dispositivo tiver as informações corretas que você deseja aplicar nas outras telas.
+                  </span>
+                  <button
+                    onClick={handleForceSyncAllToCloud}
+                    disabled={isSyncingUser}
+                    className="mt-2 inline-flex items-center gap-1 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg transition"
+                  >
+                    Fazer Backup Completo 📤
+                  </button>
+                </div>
+              </div>
+
+              {/* Option 2: Restore Full */}
+              <div className="p-3.5 rounded-2xl border border-slate-100 bg-slate-50/50 hover:bg-slate-50 transition flex items-start gap-4">
+                <div className="p-3 bg-purple-50 text-purple-700 rounded-xl">
+                  <Download className="w-5 h-5" />
+                </div>
+                <div className="flex-1 space-y-1">
+                  <span className="block text-xs font-black text-slate-900">Restaurar da Nuvem (Forçar Download)</span>
+                  <span className="block text-[10px] text-slate-500 font-medium leading-relaxed">
+                    Substitui os dados deste navegador com tudo o que está salvo na sua conta do Google na Nuvem (eventos e movimentos). Útil para carregar sua agenda integral em um celular ou computador novo.
+                  </span>
+                  <button
+                    onClick={executeCloudDownload}
+                    disabled={isSyncingUser}
+                    className="mt-2 inline-flex items-center gap-1 bg-purple-600 hover:bg-purple-700 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg transition"
+                  >
+                    Restaurar da Nuvem 📥
+                  </button>
+                </div>
+              </div>
+
+              {/* Option 3: Merging */}
+              <div className="p-3.5 rounded-2xl border border-slate-100 bg-slate-50/50 hover:bg-slate-50 transition flex items-start gap-4">
+                <div className="p-3 bg-emerald-50 text-emerald-700 rounded-xl">
+                  <Layers className="w-5 h-5" />
+                </div>
+                <div className="flex-1 space-y-1">
+                  <span className="block text-xs font-black text-slate-900">Mesclar Dados (Unificar Dispositivos)</span>
+                  <span className="block text-[10px] text-slate-500 font-medium leading-relaxed">
+                    Combina de forma inteligente todos os eventos deste navegador com os salvos na nuvem sem deletar nada, resolvendo qualquer diferença ou duplicidade de forma equilibrada.
+                  </span>
+                  <button
+                    onClick={executeCloudMerge}
+                    disabled={isSyncingUser}
+                    className="mt-2 inline-flex items-center gap-1 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg transition"
+                  >
+                    Mesclar e Unificar 🔄
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-slate-100 font-sans">
               <button
-                onClick={() => handleSyncResolution('cloud')}
-                disabled={isSyncingUser}
-                className="w-full text-left p-3 rounded-xl border border-blue-200 bg-blue-50/50 hover:bg-blue-100 flex items-start gap-3 transition cursor-pointer group disabled:opacity-50"
+                type="button"
+                onClick={() => setIsBackupModalOpen(false)}
+                className="px-4 py-2 text-xs font-extrabold text-slate-500 hover:text-slate-800 rounded-xl transition hover:bg-slate-50 cursor-pointer"
               >
-                <div className="p-2 bg-blue-100 rounded-lg group-hover:bg-blue-200 text-blue-700">
-                  <Globe className="w-4 h-4" />
-                </div>
-                <div>
-                  <span className="block text-xs font-extrabold text-blue-900">Usar Dados da Nuvem</span>
-                  <span className="block text-[10px] text-blue-700">Puxa os dados do outro dispositivo e substitui os dados deste navegador.</span>
-                </div>
-              </button>
-              
-              <button
-                onClick={() => handleSyncResolution('local')}
-                disabled={isSyncingUser}
-                className="w-full text-left p-3 rounded-xl border border-emerald-200 bg-emerald-50/50 hover:bg-emerald-100 flex items-start gap-3 transition cursor-pointer group disabled:opacity-50"
-              >
-                <div className="p-2 bg-emerald-100 rounded-lg group-hover:bg-emerald-200 text-emerald-700">
-                  <Upload className="w-4 h-4" />
-                </div>
-                <div>
-                  <span className="block text-xs font-extrabold text-emerald-900">Usar Dados do Navegador Atual</span>
-                  <span className="block text-[10px] text-emerald-700">Envia os dados atuais deste navegador para a nuvem (sobrescrevendo o outro).</span>
-                </div>
-              </button>
-              
-              <button
-                onClick={() => handleSyncResolution('merge')}
-                disabled={isSyncingUser}
-                className="w-full text-left p-3 rounded-xl border border-purple-200 bg-purple-50/50 hover:bg-purple-100 flex items-start gap-3 transition cursor-pointer group disabled:opacity-50"
-              >
-                <div className="p-2 bg-purple-100 rounded-lg group-hover:bg-purple-200 text-purple-700">
-                  {isSyncingUser ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Layers className="w-4 h-4" />}
-                </div>
-                <div>
-                  <span className="block text-xs font-extrabold text-purple-900">{isSyncingUser ? 'Combinando...' : 'Mesclar Tudo (Recomendado)'}</span>
-                  <span className="block text-[10px] text-purple-700">Mantém todos os eventos juntando os dois.</span>
-                </div>
+                Voltar / Fechar
               </button>
             </div>
           </div>

@@ -4,7 +4,7 @@
  */
 
 import { db, auth } from './firebaseAuth';
-import { collection, doc, setDoc, getDocs, deleteDoc, onSnapshot, query, where } from 'firebase/firestore';
+import { collection, doc, setDoc, getDocs, getDoc, deleteDoc, onSnapshot, query, where } from 'firebase/firestore';
 import { Mission } from '../types';
 import { CatholicEvent } from './seededCatholicEvents';
 
@@ -38,7 +38,6 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
 }
 
 // System to recover documents from any previously used potential paths that might have occurred on Vercel
-import { getDoc } from 'firebase/firestore';
 
 export async function recoverLostCatholicEvents(userId: string): Promise<CatholicEvent[]> {
   const pathsToTry = [
@@ -184,6 +183,21 @@ export function subscribeToSettings(userId: string, onUpdate: (settings: any) =>
   }, (error) => {
     handleFirestoreError(error, OperationType.GET, path);
   });
+}
+
+// Fetch user's settings from Firestore
+export async function downloadSettings(userId: string): Promise<any> {
+  const path = `users/${userId}`;
+  try {
+    const docSnap = await getDoc(doc(db, path));
+    if (docSnap.exists()) {
+      return docSnap.data();
+    }
+    return null;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, path);
+    return null;
+  }
 }
 
 export async function uploadSettings(userId: string, settings: any): Promise<void> {

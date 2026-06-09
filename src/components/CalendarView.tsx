@@ -193,7 +193,7 @@ export default function CalendarView({
         text += `- [${theDate}${timeStr}] ${m.title}\n`;
         if (m.location) text += `  📍 Local: ${m.location}\n`;
         if (m.movement) text += `  ⛪ Movimento/Grupo: ${m.movement}\n`;
-        if (m.status) text += `  📊 Status do preparo: ${m.status === 'confirmed' ? 'Confirmado' : m.status === 'preparing' ? 'Em Preparação' : m.status === 'cancelled' ? 'Cancelado' : m.status === 'done' ? 'Concluído' : 'Sem previsão'}\n`;
+        if (m.status) text += `  📊 Status do preparo: ${m.status === 'confirmed' ? 'Confirmado' : m.status === 'preparing' ? 'Em Preparação' : m.status === 'completed' ? 'Concluído' : 'Sem previsão'}\n`;
         if (m.description) text += `  📝 Descrição: ${m.description}\n`;
         if (m.roles && m.roles.length > 0) text += `  🙋 Serviços: ${m.roles.join(', ')}\n`;
         if (m.observation) text += `  ⚠️ Observações: ${m.observation}\n`;
@@ -201,7 +201,7 @@ export default function CalendarView({
         if (m.checklist && m.checklist.length > 0) {
           text += `  ✅ Checklist:\n`;
           m.checklist.forEach(c => {
-            text += `     ${c.done ? '[x]' : '[ ]'} ${c.text}\n`;
+            text += `     ${c.completed ? '[x]' : '[ ]'} ${c.text}\n`;
           });
         }
         text += '\n';

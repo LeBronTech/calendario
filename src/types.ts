@@ -56,7 +56,7 @@ export interface Mission {
   synced: boolean;
   attended?: boolean; // Attended status confirmed by the user for Completed events
   offlineSaved?: boolean;
-  createdAt: string;
+  createdAt?: string;
 
   // New fields requested by user
   instagramUrl?: string;

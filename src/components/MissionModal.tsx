@@ -341,11 +341,12 @@ export default function MissionModal({
           logoUrl: movementLogoUrl || undefined
         };
         localStorage.setItem('saved_custom_catholic_movements', JSON.stringify(customObj));
-        window.dispatchEvent(new Event('customMovementsChanged'));
       } catch (err) {
         console.error('Error saving custom movement info:', err);
       }
     }
+
+    window.dispatchEvent(new Event('customMovementsChanged'));
 
     const payload: Partial<Mission> = {
       title: title.trim() || 'Nova Missão',
