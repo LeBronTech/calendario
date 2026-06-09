@@ -27,15 +27,15 @@ import {
   MoreHorizontal
 } from 'lucide-react';
 import { Mission, CatholicMovement, DailyTimeConfig, RecurrenceConfig } from '../types';
-import { getMovementStyle, isMissionOnDate, getEffectiveEndDate, getSortedMovements } from '../utils/catholicData';
+import { getMovementStyle, isMissionOnDate, getEffectiveEndDate, getSortedMovements, getAllMovements } from '../utils/catholicData';
 
 interface DayActivityModalProps {
   isOpen: boolean;
   onClose: () => void;
   selectedDay: string;
   missions: Mission[];
-  onSaveMission: (mission: Partial<Mission>) => void;
-  onDeleteMission: (id: string) => void;
+  onSaveMission: (mission: Partial<Mission>, applyToSeries?: boolean) => void;
+  onDeleteMission: (id: string, applyToSeries?: boolean) => void;
 }
 
 const AVAILABLE_ROLES = [
@@ -422,7 +422,7 @@ export default function DayActivityModal({
           setSelectedColorClass(realMission.cardColor);
         }
 
-        const isStandard = Object.values(CatholicMovement).includes(realMission.movement as CatholicMovement);
+        const isStandard = Object.keys(getAllMovements()).includes(realMission.movement);
         if (isStandard) {
           setMovement(realMission.movement);
           setUseCustomMovement(false);
@@ -550,7 +550,7 @@ export default function DayActivityModal({
     }
   };
 
-  const handleSave = () => {
+  const handleSave = (applyToSeries?: boolean) => {
     const finalMovement = useCustomMovement ? (customMovementName.trim() || 'Customizado') : movement;
 
     // Save movement to color class mapping persistently
@@ -610,7 +610,7 @@ export default function DayActivityModal({
     };
 
     if (isCreatingNew) {
-      onSaveMission(payload);
+      onSaveMission(payload, applyToSeries);
       setIsCreatingNew(false);
       setTimeout(() => {
         setCurrentIndex(0);
@@ -619,29 +619,22 @@ export default function DayActivityModal({
       const currentId = dayMissions[currentIndex]?.id;
       if (currentId) {
         payload.id = currentId;
-        onSaveMission(payload);
+        onSaveMission(payload, applyToSeries);
         setIsEditing(false);
       }
     }
   };
 
-  const handleDelete = () => {
-    console.log('DayActivityModal handleDelete clicked');
+  const handleDelete = (applyToSeries?: boolean) => {
     const currentId = dayMissions[currentIndex]?.id;
-    console.log('Current ID to delete:', currentId);
-    console.log('Available dayMissions:', dayMissions);
-    console.log('Current Index:', currentIndex);
     if (currentId) {
-      console.log('Calling onDeleteMission with ID:', currentId);
-      onDeleteMission(currentId);
+      onDeleteMission(currentId, applyToSeries);
       if (currentIndex > 0) {
         setCurrentIndex((prev) => prev - 1);
       } else {
         setCurrentIndex(0);
       }
       setIsEditing(false);
-    } else {
-      console.log('No current ID found to delete.');
     }
   };
 
@@ -656,6 +649,7 @@ export default function DayActivityModal({
 
   const activeMission = dayMissions[currentIndex];
   const activeStyle = activeMission ? getMovementStyle(activeMission.movement) : getMovementStyle(movement);
+  const seriesCount = activeMission ? missions.filter(m => m.id !== activeMission.id && m.title === activeMission.title && m.movement === activeMission.movement && m.startTime === activeMission.startTime).length : 0;
 
   useEffect(() => {
     if (isOpen && activeMission) {
@@ -685,8 +679,8 @@ export default function DayActivityModal({
   const isTipoDiff = tipo !== (currentEditBase?.tipo || '');
   const isObservationDiff = observation !== (currentEditBase?.observation || '');
   const isStatusDiff = status !== (currentEditBase?.status || 'preparing');
-  const isMovementDiff = movement !== (currentEditBase ? (Object.values(CatholicMovement).includes(currentEditBase.movement as CatholicMovement) ? currentEditBase.movement : 'custom') : CatholicMovement.PAROQUIAL);
-  const isCustomMovementNameDiff = customMovementName !== (currentEditBase && !Object.values(CatholicMovement).includes(currentEditBase.movement as CatholicMovement) ? currentEditBase.movement : '');
+  const isMovementDiff = movement !== (currentEditBase ? (Object.keys(getAllMovements()).includes(currentEditBase.movement) ? currentEditBase.movement : 'custom') : CatholicMovement.PAROQUIAL);
+  const isCustomMovementNameDiff = customMovementName !== (currentEditBase && !Object.keys(getAllMovements()).includes(currentEditBase.movement) ? currentEditBase.movement : '');
   const isMovementLogoUrlDiff = movementLogoUrl !== (currentEditBase?.movementLogoUrl || '');
 
   const hasFormChanged = (isEditing || isCreatingNew) && (isTitleDiff || isDateStrDiff || isEndDateStrDiff || isStartTimeDiff || isEndTimeDiff || isLocationDiff || isInstagramUrlDiff || isTipoDiff || isObservationDiff || isStatusDiff || isMovementDiff || isCustomMovementNameDiff || isMovementLogoUrlDiff);
@@ -1287,13 +1281,24 @@ export default function DayActivityModal({
               {/* Edit Mode Save Buttons (Compact size!) */}
               <div className="flex gap-1.5 justify-end pt-2">
                 {!isCreatingNew && (
-                  <button
-                    type="button"
-                    onClick={handleDelete}
-                    className="mr-auto px-2.5 py-1 rounded-lg bg-red-50 hover:bg-red-100 border border-red-200 text-red-700 font-bold text-[11px] flex items-center gap-1 transition"
-                  >
-                    <Trash2 className="w-3 h-3" /> Excluir
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(false)}
+                      className="mr-auto px-2.5 py-1 rounded-lg bg-red-50 hover:bg-red-100 border border-red-200 text-red-700 font-bold text-[11px] flex items-center gap-1 transition"
+                    >
+                      <Trash2 className="w-3 h-3" /> Excluir Único
+                    </button>
+                    {seriesCount > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(true)}
+                        className="px-2.5 py-1 rounded-lg bg-red-100/50 hover:bg-red-200 border border-red-300 text-red-800 font-extrabold text-[10px] flex items-center gap-1 transition"
+                      >
+                        <Trash2 className="w-3 h-3" /> Excluir Série 
+                      </button>
+                    )}
+                  </>
                 )}
                 <button
                   type="button"
@@ -1305,12 +1310,21 @@ export default function DayActivityModal({
                 >
                   Cancelar
                 </button>
+                {seriesCount > 0 && !isCreatingNew && (
+                  <button
+                    type="button"
+                    onClick={() => handleSave(true)}
+                    className="px-3 py-1 rounded-lg bg-orange-600 hover:bg-orange-500 text-white font-extrabold text-[11px] flex items-center gap-1 shadow transition"
+                  >
+                    <Save className="w-3 h-3" /> Toda Série
+                  </button>
+                )}
                 <button
                   type="button"
-                  onClick={handleSave}
+                  onClick={() => handleSave(false)}
                   className="px-3 py-1 rounded-lg bg-purple-700 hover:bg-purple-600 text-white font-extrabold text-[11px] flex items-center gap-1 shadow transition"
                 >
-                  <Save className="w-3 h-3" /> Gravar
+                  <Save className="w-3 h-3" /> {seriesCount > 0 && !isCreatingNew ? 'Só Este' : 'Gravar'}
                 </button>
               </div>
             </div>
@@ -1613,9 +1627,9 @@ export default function DayActivityModal({
                     <div className="flex items-center gap-2 flex-wrap">
                       
                       {/* Logo image representation in title row if customized */}
-                      {activeMission?.movementLogoUrl && (
+                      {(activeMission?.movementLogoUrl || activeStyle?.logoUrl) && (
                         <div className="w-5 h-5 rounded-full overflow-hidden border border-purple-300 bg-white inline-block">
-                          <img src={activeMission.movementLogoUrl} alt="Logo" className="w-full h-full object-cover" />
+                          <img src={activeMission?.movementLogoUrl || (activeStyle?.logoUrl || '')} alt="Logo" className="w-full h-full object-cover" />
                         </div>
                       )}
 
@@ -1729,6 +1743,18 @@ export default function DayActivityModal({
                         <span className="text-[11px]">⛪</span> Fui, estive lá!
                       </button>
                     </div>
+                    {seriesCount > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const updated = { ...activeMission, attended: true, status: 'completed' as const };
+                          onSaveMission(updated, true);
+                        }}
+                        className="w-full mt-2 py-1.5 bg-orange-50 hover:bg-orange-100 border border-orange-200 text-orange-800 text-[10px] font-extrabold tracking-wide rounded-lg transition"
+                      >
+                         Marcar presença em toda a série ({seriesCount + 1})
+                      </button>
+                    )}
                   </div>
                 )}
 

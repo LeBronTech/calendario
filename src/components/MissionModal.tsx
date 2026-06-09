@@ -6,7 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Calendar, MapPin, Clock, Save, Bookmark, Instagram, Upload, Trash2, Tag } from 'lucide-react';
 import { Mission, CatholicMovement, DailyTimeConfig, RecurrenceConfig } from '../types';
-import { getMovementStyle, getSortedMovements } from '../utils/catholicData';
+import { getMovementStyle, getSortedMovements, getAllMovements } from '../utils/catholicData';
 
 interface MissionModalProps {
   isOpen: boolean;
@@ -193,7 +193,7 @@ export default function MissionModal({
       }
       
       // Check if standard movement or custom
-      const isStandard = Object.values(CatholicMovement).includes(editMission.movement as CatholicMovement);
+      const isStandard = Object.keys(getAllMovements()).includes(editMission.movement);
       if (isStandard) {
         setMovement(editMission.movement);
         setUseCustomMovement(false);
@@ -394,8 +394,8 @@ export default function MissionModal({
   const isTipoDiff = tipo !== (editMission?.tipo || '');
   const isObservationDiff = observation !== (editMission?.observation || '');
   const isStatusDiff = status !== (editMission?.status || (initialDate ? 'preparing' : 'backlog'));
-  const isMovementDiff = movement !== (editMission ? (Object.values(CatholicMovement).includes(editMission.movement as CatholicMovement) ? editMission.movement : 'custom') : CatholicMovement.PAROQUIAL);
-  const isCustomMovementNameDiff = customMovementName !== (editMission && !Object.values(CatholicMovement).includes(editMission.movement as CatholicMovement) ? editMission.movement : '');
+  const isMovementDiff = movement !== (editMission ? (Object.keys(getAllMovements()).includes(editMission.movement) ? editMission.movement : 'custom') : CatholicMovement.PAROQUIAL);
+  const isCustomMovementNameDiff = customMovementName !== (editMission && !Object.keys(getAllMovements()).includes(editMission.movement) ? editMission.movement : '');
   const isMovementLogoUrlDiff = movementLogoUrl !== (editMission?.movementLogoUrl || '');
 
   const hasChanged = isTitleDiff || isDateStrDiff || isEndDateStrDiff || isStartTimeDiff || isEndTimeDiff || isLocationDiff || isDescriptionDiff || isInstagramUrlDiff || isTipoDiff || isObservationDiff || isStatusDiff || isMovementDiff || isCustomMovementNameDiff || isMovementLogoUrlDiff;

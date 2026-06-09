@@ -516,6 +516,7 @@ export default function App() {
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [editMission, setEditMission] = useState<Mission | null>(null);
   const [missionToDelete, setMissionToDelete] = useState<Mission | null>(null);
+  const [missionToDeleteSeries, setMissionToDeleteSeries] = useState(false);
   const [isSimulatedOffline, setSimulatedOffline] = useState(false);
   const [notificationPermission, setNotificationPermission] = useState('default');
 
@@ -594,47 +595,53 @@ export default function App() {
         }
       }).catch(() => {});
       
+      let initialSyncDone = false;
       const unsubscribe = subscribeToMissions(user.uid, (cloudMissions) => {
-        let currentLocal: Mission[] = [];
-        const localDb = localStorage.getItem('missions_db_maria');
-        const legacyDb = localStorage.getItem('missions_db');
-        const veryLegacyDb = localStorage.getItem('events');
+        if (!initialSyncDone) {
+          initialSyncDone = true;
+          let currentLocal: Mission[] = [];
+          const localDb = localStorage.getItem('missions_db_maria');
+          const legacyDb = localStorage.getItem('missions_db');
+          const veryLegacyDb = localStorage.getItem('events');
 
-        [veryLegacyDb, legacyDb, localDb].forEach(dbStr => {
-          if (dbStr && dbStr !== '[]') {
-            try {
-              const parsed = JSON.parse(dbStr);
-              if (Array.isArray(parsed)) {
-                // Deduplicate during merge
-                parsed.forEach(p => {
-                  if (!currentLocal.find(c => c.id === p.id)) {
-                    currentLocal.push(p);
-                  }
-                });
-              }
-            } catch (e) {}
-          }
-        });
-        
-        const cloudIds = new Set(cloudMissions.map((m) => m.id));
-        const merged = [...cloudMissions];
-        const toUpload: Mission[] = [];
-        
-        currentLocal.forEach((lm) => {
-          if (!cloudIds.has(lm.id)) {
-            merged.push(lm);
-            toUpload.push(lm);
-          }
-        });
-        
-        setMissions(merged);
-        localStorage.setItem('missions_db_maria', JSON.stringify(merged));
-        
-        toUpload.forEach(m => {
-          uploadMission(user.uid, m).catch(console.error);
-        });
-        
-        addLog(`Sincronizado! Dados atualizados com a nuvem.`);
+          [veryLegacyDb, legacyDb, localDb].forEach(dbStr => {
+            if (dbStr && dbStr !== '[]') {
+              try {
+                const parsed = JSON.parse(dbStr);
+                if (Array.isArray(parsed)) {
+                  parsed.forEach(p => {
+                    if (!currentLocal.find(c => c.id === p.id)) {
+                      currentLocal.push(p);
+                    }
+                  });
+                }
+              } catch (e) {}
+            }
+          });
+          
+          const cloudIds = new Set(cloudMissions.map((m) => m.id));
+          const merged = [...cloudMissions];
+          const toUpload: Mission[] = [];
+          
+          currentLocal.forEach((lm) => {
+            if (!cloudIds.has(lm.id)) {
+              merged.push(lm);
+              toUpload.push(lm);
+            }
+          });
+          
+          setMissions(merged);
+          localStorage.setItem('missions_db_maria', JSON.stringify(merged));
+          
+          toUpload.forEach(m => {
+            uploadMission(user.uid, m).catch(console.error);
+          });
+          
+          addLog(`Sincronizado inicial! Dados atualizados com a nuvem.`);
+        } else {
+          setMissions(cloudMissions);
+          localStorage.setItem('missions_db_maria', JSON.stringify(cloudMissions));
+        }
       });
 
       return () => unsubscribe();
@@ -1371,7 +1378,7 @@ export default function App() {
   };
 
   // Deletion logic
-  const handleDeleteMission = (id: string) => {
+  const handleDeleteMission = (id: string, applyToSeries?: boolean) => {
     console.log('Attempting to delete mission:', id);
     const target = missions.find((m) => m.id === id);
     console.log('Target mission found:', target);
@@ -1380,60 +1387,54 @@ export default function App() {
       return;
     }
     setMissionToDelete(target);
+    setMissionToDeleteSeries(!!applyToSeries);
   };
 
-  const executeDeleteMission = (id: string) => {
-    console.log('Executing delete for mission:', id);
+  const executeDeleteMission = (id: string, applyToSeries?: boolean) => {
+    console.log('Executing delete for mission:', id, 'series:', applyToSeries);
     const target = missions.find((m) => m.id === id);
     if (!target) return;
 
+    let targetIds = [id];
+    if (applyToSeries) {
+      targetIds = missions
+        .filter(m => m.id === id || (m.title === target.title && m.movement === target.movement && m.startTime === target.startTime))
+        .map(m => m.id);
+    }
+
     const runAsyncDelete = async () => {
-      if (accessToken && target.googleEventId && !isSimulatedOffline) {
-        try {
-          addLog('Excluindo evento sincronizado no Google Agenda...');
-          const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${target.googleEventId}`, {
-            method: 'DELETE',
-            headers: { Authorization: `Bearer ${accessToken}` },
-          });
-          if (res.status === 401) {
-            localStorage.removeItem('_cached_google_token');
-            sessionStorage.removeItem('_g_connected');
-            setAccessToken(null);
-            addLog('Token expirado ao excluir. Tentando renovar...');
-            try {
-              const reauth = await googleSignIn();
-              if (reauth) {
-                setAccessToken(reauth.accessToken);
-                setUser(reauth.user);
-                await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${target.googleEventId}`, {
-                  method: 'DELETE',
-                  headers: { Authorization: `Bearer ${reauth.accessToken}` },
-                });
-                addLog('Exclusão sincronizada com o Google Agenda após renovação.');
-              }
-            } catch (reauthErr) {
-              addLog('A renovação falhou durante a exclusão.');
-              alert('Sua sessão expirou. Conecte-se novamente ao Google Agenda.');
-            }
-          } else {
-            addLog('Exclusão sincronizada com o Google Calendar.');
+      for (const tId of targetIds) {
+        const mTarget = missions.find(m => m.id === tId);
+        if (accessToken && mTarget?.googleEventId && !isSimulatedOffline) {
+          try {
+            await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${mTarget.googleEventId}`, {
+              method: 'DELETE',
+              headers: { Authorization: `Bearer ${accessToken}` },
+            });
+          } catch (error) {
+            console.error(error);
           }
-        } catch (error) {
-          console.error(error);
         }
       }
     };
 
     runAsyncDelete();
 
-    const nextList = missions.filter((m) => m.id !== id);
-    console.log('New list of missions:', nextList);
+    const nextList = missions.filter((m) => !targetIds.includes(m.id));
     saveMissionsState(nextList);
     if (user) {
-      removeMission(user.uid, id).catch(console.error);
+      for (const tId of targetIds) {
+        removeMission(user.uid, tId).catch(console.error);
+      }
     }
-    addLog(`Missão "${target.title}" arquivada com sucesso.`);
+    
+    if (applyToSeries) {
+      addLog(`Série de eventos "${target.title}" excluída com sucesso.`);
+    } else {
+      addLog(`Missão "${target.title}" arquivada com sucesso.`);
+    }
     setMissionToDelete(null);
+    setMissionToDeleteSeries(false);
   };
 
   // Silent removal for quick toggling calendar state in Catalog
@@ -1716,7 +1717,7 @@ export default function App() {
               <div className="space-y-1 select-text">
                 <h3 className="font-extrabold text-xs text-red-950 uppercase tracking-wider">Confirmar Exclusão</h3>
                 <p className="text-xs text-slate-650 leading-relaxed">
-                  Tem certeza de que deseja arquivar ou excluir a missão <strong className="text-slate-900">"{missionToDelete.title}"</strong>?<br />
+                  Tem certeza de que deseja arquivar ou excluir a missão {missionToDeleteSeries ? 'EM SÉRIE' : ''} <strong className="text-slate-900">"{missionToDelete.title}"</strong>?<br />
                   Esta ação removerá permanentemente os registros do cache e da nuvem.
                 </p>
               </div>
@@ -1725,7 +1726,7 @@ export default function App() {
             <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
               <button
                 type="button"
-                onClick={() => setMissionToDelete(null)}
+                onClick={() => { setMissionToDelete(null); setMissionToDeleteSeries(false); }}
                 className="px-3 py-1.5 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-xs font-extrabold text-slate-600 transition cursor-pointer"
               >
                 Cancelar
@@ -1733,11 +1734,11 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => {
-                  executeDeleteMission(missionToDelete.id);
+                  executeDeleteMission(missionToDelete.id, missionToDeleteSeries);
                 }}
                 className="px-3.5 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-extrabold shadow-sm transition cursor-pointer"
               >
-                Confirmar Exclusão
+                Confirmar Exclusão {missionToDeleteSeries ? 'da Série' : ''}
               </button>
             </div>
           </div>
