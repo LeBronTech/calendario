@@ -16,7 +16,9 @@ import {
   RefreshCw,
   Upload,
   Cloud,
-  Download
+  Download,
+  Trash2,
+  Save
 } from 'lucide-react';
 import { CatholicMovement, Mission } from './types';
 import { MOVEMENT_DATA, getMovementStyle } from './utils/catholicData';
@@ -31,7 +33,7 @@ import CatholicEventsCalendar from './components/CatholicEventsCalendar';
 import RetrospectivaView from './components/RetrospectivaView';
 
 // Auth Imports
-import { googleSignIn, logout, initAuth } from './utils/firebaseAuth';
+import { googleSignIn, logout, initAuth, signInWithEmail, signUpWithEmail } from './utils/firebaseAuth';
 import { downloadMissions, uploadMission, removeMission, subscribeToMissions, recoverLostMissions, uploadSettings, subscribeToSettings, downloadSettings } from './utils/firebaseDb';
 import { User } from 'firebase/auth';
 
@@ -519,9 +521,17 @@ export default function App() {
   const [authResolved, setAuthResolved] = useState(false);
   const [accessToken, setAccessToken] = useState<string | null>(null);
   
+  // Manual Auth states
+  const [manualAuthMode, setManualAuthMode] = useState<'login' | 'signup'>('login');
+  const [manualEmail, setManualEmail] = useState('');
+  const [manualPassword, setManualPassword] = useState('');
+  const [manualDisplayName, setManualDisplayName] = useState('');
+  const [manualError, setManualError] = useState('');
+  
   // Mobile and view optimization states
   const [selectedDay, setSelectedDay] = useState<string>('2026-06-06');
   const [currentMainSection, setCurrentMainSection] = useState<'personal' | 'retrospective' | 'catalog'>('personal');
+  const [customMovementsVersion, setCustomMovementsVersion] = useState(0);
   
   // Modals Visibility
   const [isDayModalOpen, setIsDayModalOpen] = useState(false);
@@ -529,6 +539,12 @@ export default function App() {
   const [editMission, setEditMission] = useState<Mission | null>(null);
   const [missionToDelete, setMissionToDelete] = useState<Mission | null>(null);
   const [missionToDeleteSeries, setMissionToDeleteSeries] = useState(false);
+  const [seriesEditData, setSeriesEditData] = useState<{
+    payload: Partial<Mission>;
+    baseMission: Mission;
+    matches: Mission[];
+    selectedIds: Record<string, boolean>;
+  } | null>(null);
   const [isSimulatedOffline, setSimulatedOffline] = useState(false);
   const [notificationPermission, setNotificationPermission] = useState('default');
   const [isBackupModalOpen, setIsBackupModalOpen] = useState(false);
@@ -587,7 +603,7 @@ export default function App() {
         setAccessToken(token);
         setNeedsAuth(false);
         setAuthResolved(true);
-        addLog(`Conectado no Google como: ${currentUser.displayName}`);
+        addLog(`Conectado como: ${currentUser.displayName || currentUser.email}`);
       },
       () => {
         setUser(null);
@@ -623,22 +639,70 @@ export default function App() {
         cloudCachedSettings = settings;
         if (settings) {
             let updated = false;
+            let needsUpload = false;
+
+            // Merge Custom Movements
+            const localCustomStr = localStorage.getItem('saved_custom_catholic_movements');
+            let localCustom = {};
+            try {
+              localCustom = localCustomStr ? JSON.parse(localCustomStr) : {};
+            } catch (e) {}
+
+            let cloudCustom = {};
             if (settings.saved_custom_catholic_movements) {
-              const localCustom = localStorage.getItem('saved_custom_catholic_movements');
-              if (localCustom !== settings.saved_custom_catholic_movements) {
-                localStorage.setItem('saved_custom_catholic_movements', settings.saved_custom_catholic_movements);
-                updated = true;
-              }
+              try {
+                cloudCustom = JSON.parse(settings.saved_custom_catholic_movements);
+              } catch (e) {}
             }
+
+            const mergedCustom = { ...cloudCustom, ...localCustom };
+            const mergedCustomStr = JSON.stringify(mergedCustom);
+
+            if (localCustomStr !== mergedCustomStr) {
+              localStorage.setItem('saved_custom_catholic_movements', mergedCustomStr);
+              updated = true;
+            }
+
+            // Merge Custom Colors
+            const localColorsStr = localStorage.getItem('catholic_movement_colors_maria');
+            let localColors = {};
+            try {
+              localColors = localColorsStr ? JSON.parse(localColorsStr) : {};
+            } catch (e) {}
+
+            let cloudColors = {};
             if (settings.catholic_movement_colors_maria) {
-              const localColors = localStorage.getItem('catholic_movement_colors_maria');
-              if (localColors !== settings.catholic_movement_colors_maria) {
-                localStorage.setItem('catholic_movement_colors_maria', settings.catholic_movement_colors_maria);
-                updated = true;
-              }
+              try {
+                cloudColors = JSON.parse(settings.catholic_movement_colors_maria);
+              } catch (e) {}
             }
+
+            const mergedColors = { ...cloudColors, ...localColors };
+            const mergedColorsStr = JSON.stringify(mergedColors);
+
+            if (localColorsStr !== mergedColorsStr) {
+              localStorage.setItem('catholic_movement_colors_maria', mergedColorsStr);
+              updated = true;
+            }
+
             if (updated) {
               window.dispatchEvent(new Event('customMovementsChanged'));
+            }
+
+            // If local changes existed which weren't on cloud (making merged set different from cloud set), upload merged
+            if (
+              settings.saved_custom_catholic_movements !== mergedCustomStr ||
+              settings.catholic_movement_colors_maria !== mergedColorsStr
+            ) {
+              needsUpload = true;
+            }
+
+            if (needsUpload && user) {
+              const settingsPayload: any = {
+                saved_custom_catholic_movements: mergedCustomStr,
+                catholic_movement_colors_maria: mergedColorsStr
+              };
+              uploadSettings(user.uid, settingsPayload).catch(console.error);
             }
         }
       });
@@ -701,6 +765,7 @@ export default function App() {
   // Listen to custom movements changes and automatically upload to cloud settings in real-time
   useEffect(() => {
     const handleCustomMovementsChanged = async () => {
+      setCustomMovementsVersion((v) => v + 1);
       if (user) {
         const savedCustom = localStorage.getItem('saved_custom_catholic_movements');
         const colorsObj = localStorage.getItem('catholic_movement_colors_maria');
@@ -1284,6 +1349,85 @@ export default function App() {
   }, [missions, accessToken, isSimulatedOffline]);
 
   // Auth logins handler
+  const handleManualLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isAuthenticating) return;
+    setManualError('');
+    if (!manualEmail.trim() || !manualPassword.trim()) {
+      setManualError('Por favor, preencha o e-mail e a senha.');
+      return;
+    }
+    try {
+      setIsAuthenticating(true);
+      addLog(`Tentando login manual para: ${manualEmail}`);
+      const loggedUser = await signInWithEmail(manualEmail, manualPassword);
+      setUser(loggedUser);
+      setNeedsAuth(false);
+      addLog(`Login efetuado com sucesso: ${loggedUser.displayName || loggedUser.email}`);
+      // Clear inputs
+      setManualEmail('');
+      setManualPassword('');
+      setManualError('');
+    } catch (err: any) {
+      console.error(err);
+      let errorMsg = 'E-mail ou senha incorretos, ou cadastro inexistente.';
+      if (err?.code === 'auth/invalid-credential') {
+        errorMsg = 'Credenciais inválidas. Verifique o e-mail e a senha.';
+      } else if (err?.code === 'auth/user-not-found') {
+        errorMsg = 'Nenhum usuário encontrado com este e-mail.';
+      } else if (err?.code === 'auth/wrong-password') {
+        errorMsg = 'Senha incorreta.';
+      } else if (err?.code === 'auth/invalid-email') {
+        errorMsg = 'E-mail em formato inválido.';
+      }
+      setManualError(errorMsg);
+      addLog(`Falha no login manual: ${err?.message || err}`);
+    } finally {
+      setIsAuthenticating(false);
+    }
+  };
+
+  const handleManualSignUp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isAuthenticating) return;
+    setManualError('');
+    if (!manualEmail.trim() || !manualPassword.trim() || !manualDisplayName.trim()) {
+      setManualError('Por favor, preencha o seu nome, e-mail e a senha.');
+      return;
+    }
+    if (manualPassword.length < 6) {
+      setManualError('A senha deve conter pelo menos 6 caracteres.');
+      return;
+    }
+    try {
+      setIsAuthenticating(true);
+      addLog(`Iniciando cadastro manual para: ${manualEmail}`);
+      const newUser = await signUpWithEmail(manualEmail, manualPassword, manualDisplayName);
+      setUser(newUser);
+      setNeedsAuth(false);
+      addLog(`Cadastro efetuado e conectado de forma manual: ${newUser.displayName}`);
+      // Clear inputs
+      setManualEmail('');
+      setManualPassword('');
+      setManualDisplayName('');
+      setManualError('');
+    } catch (err: any) {
+      console.error(err);
+      let errorMsg = 'Falha ao realizar cadastro. Tente outro e-mail.';
+      if (err?.code === 'auth/email-already-in-use') {
+        errorMsg = 'Este e-mail já está sendo utilizado por outra conta.';
+      } else if (err?.code === 'auth/invalid-email') {
+        errorMsg = 'E-mail em formato inválido.';
+      } else if (err?.code === 'auth/weak-password') {
+        errorMsg = 'A senha é muito fraca.';
+      }
+      setManualError(errorMsg);
+      addLog(`Falha no cadastro manual: ${err?.message || err}`);
+    } finally {
+      setIsAuthenticating(false);
+    }
+  };
+
   const handleGoogleLogin = async () => {
     if (isAuthenticating) return;
     try {
@@ -1349,6 +1493,33 @@ export default function App() {
     setIsFormModalOpen(false);
     
     const isEditing = !!payload.id;
+
+    if (isEditing && applyToSeries) {
+      const originalM = editMission || missions.find((m) => m.id === payload.id);
+      if (originalM) {
+        const matches = missions.filter(
+          (m) =>
+            m.id !== payload.id &&
+            m.title === originalM.title &&
+            m.movement === originalM.movement &&
+            m.startTime === originalM.startTime
+        );
+        if (matches.length > 0) {
+          const initialSelectedIds: Record<string, boolean> = { [payload.id!]: true };
+          matches.forEach((m) => {
+            initialSelectedIds[m.id!] = true;
+          });
+          setSeriesEditData({
+            payload,
+            baseMission: originalM,
+            matches,
+            selectedIds: initialSelectedIds,
+          });
+          return;
+        }
+      }
+    }
+
     const rc = payload.recurrence;
     const isRecurrent = rc && rc.frequency !== 'none';
     const missionsToCreate: Mission[] = [];
@@ -1710,6 +1881,229 @@ export default function App() {
     setEditMission(null);
   };
 
+  const executeCheckedSeriesSave = async (payload: Partial<Mission>, targetIds: string[]) => {
+    setSeriesEditData(null);
+    setIsFormModalOpen(false);
+
+    const isRecurrent = payload.recurrence && payload.recurrence.frequency !== 'none';
+    const missionsToCreate: Mission[] = [];
+
+    const baseMission = {
+      title: payload.title || 'Sem título',
+      movement: payload.movement || CatholicMovement.PAROQUIAL,
+      startTime: payload.startTime || '19:00',
+      endTime: payload.endTime || '20:30',
+      location: payload.location || '',
+      description: payload.description || '',
+      status: payload.status || (payload.dateStr ? 'preparing' : 'backlog'),
+      checklist: payload.checklist || [],
+      instagramUrl: payload.instagramUrl || '',
+      instagramImgUrl: payload.instagramImgUrl,
+      movementLogoUrl: payload.movementLogoUrl,
+      tipo: payload.tipo,
+      roles: payload.roles || [],
+      observation: payload.observation || '',
+      dailySchedules: payload.dailySchedules,
+      endDateStr: payload.endDateStr,
+      recurrence: payload.recurrence ? { ...payload.recurrence, frequency: 'none' as const } : undefined,
+      cardColor: payload.cardColor,
+      synced: false,
+      createdAt: new Date().toISOString()
+    };
+
+    // Update
+    const updated = missions.map(async (m) => {
+      const isTarget = m.id === payload.id || targetIds.includes(m.id!);
+
+      if (isTarget) {
+        const isSelf = m.id === payload.id;
+        const merged: Mission = isSelf ? {
+          ...m,
+          ...payload,
+          synced: false,
+        } as Mission : {
+          ...m,
+          title: payload.title || m.title,
+          movement: payload.movement || m.movement,
+          startTime: payload.startTime || m.startTime,
+          endTime: payload.endTime || m.endTime,
+          location: payload.location || m.location,
+          description: payload.description || m.description,
+          instagramUrl: payload.instagramUrl || m.instagramUrl,
+          instagramImgUrl: payload.instagramImgUrl,
+          movementLogoUrl: payload.movementLogoUrl,
+          tipo: payload.tipo,
+          roles: payload.roles || m.roles,
+          observation: payload.observation || m.observation,
+          cardColor: payload.cardColor,
+          synced: false,
+        } as Mission;
+
+        if (accessToken && merged.dateStr && !isSimulatedOffline) {
+          try {
+            const gId = await pushEventToGoogleCalendar(merged, accessToken);
+            if (gId) {
+              merged.googleEventId = gId;
+              merged.synced = true;
+            }
+          } catch (err: any) {
+            if (err?.message === '401_UNAUTHORIZED') {
+              addLog('Token expirado ao atualizar. Renovando...');
+              try {
+                const reauth = await googleSignIn();
+                if (reauth) {
+                  setAccessToken(reauth.accessToken);
+                  setUser(reauth.user);
+                  const gId = await pushEventToGoogleCalendar(merged, reauth.accessToken);
+                  if (gId) {
+                    merged.googleEventId = gId;
+                    merged.synced = true;
+                  }
+                } else {
+                  setAccessToken(null);
+                }
+              } catch (reauthErr) {
+                setAccessToken(null);
+                addLog('A renovação do login falhou.');
+                alert('Sua sessão expirou. Conecte-se novamente ao Google Agenda.');
+              }
+            }
+          }
+        }
+        addLog(`Ajustadas informações da missão "${merged.title}".`);
+        if (user) {
+          uploadMission(user.uid, merged).catch(console.error);
+        }
+        return merged;
+      }
+      return m;
+    });
+
+    const updatedMissionsResolved = await Promise.all(updated);
+
+    if (isRecurrent && payload.recurrence) {
+      const rc = payload.recurrence;
+      if (rc.frequency === 'weekly' && rc.daysOfWeek && rc.daysOfWeek.length > 0) {
+        const start = new Date((payload.dateStr || '2026-06-06') + 'T12:00:00');
+        const end = rc.endDate ? new Date(rc.endDate + 'T12:00:00') : new Date(start);
+        if (!rc.endDate) end.setMonth(end.getMonth() + 3);
+
+        const current = new Date(start);
+        while (current <= end) {
+          const dStr = current.toISOString().split('T')[0];
+          if (rc.daysOfWeek.includes(current.getDay()) && dStr !== payload.dateStr) {
+            missionsToCreate.push({
+              id: `mission-${Date.now()}-${dStr}-${Math.random().toString(36).substring(2, 9)}`,
+              dateStr: dStr,
+              ...baseMission,
+              recurrence: { ...rc, frequency: 'none' as const }
+            });
+          }
+          current.setDate(current.getDate() + 1);
+        }
+      } else if (rc.frequency === 'monthly' && payload.dateStr) {
+        const start = new Date(payload.dateStr + 'T12:00:00');
+        const end = rc.endDate ? new Date(rc.endDate + 'T12:00:00') : new Date(start);
+        if (!rc.endDate) end.setFullYear(end.getFullYear() + 1);
+
+        const current = new Date(start);
+        while (current <= end) {
+          const dStr = current.toISOString().split('T')[0];
+          if (dStr !== payload.dateStr) {
+            missionsToCreate.push({
+              id: `mission-${Date.now()}-${dStr}-${Math.random().toString(36).substring(2, 9)}`,
+              dateStr: dStr,
+              ...baseMission,
+              recurrence: { ...rc, frequency: 'none' as const }
+            });
+          }
+          const expectedMonth = (current.getMonth() + 1) % 12;
+          current.setMonth(current.getMonth() + 1);
+          if (current.getMonth() !== expectedMonth) {
+            current.setDate(0); 
+          }
+        }
+      } else if (rc.frequency === 'custom' && rc.customDates) {
+        rc.customDates.forEach((dStr, idx) => {
+          if (dStr !== payload.dateStr) {
+            missionsToCreate.push({
+              id: `mission-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 9)}`,
+              dateStr: dStr,
+              ...baseMission,
+              recurrence: { ...rc, frequency: 'none' }
+            });
+          }
+        });
+      }
+    }
+
+    if (missionsToCreate.length > 0) {
+      let currentToken = accessToken;
+      const finalExtraMissions: Mission[] = [];
+      for (const nm of missionsToCreate) {
+        const mission = { ...nm };
+        if (currentToken && mission.dateStr && !isSimulatedOffline) {
+          try {
+            const gId = await pushEventToGoogleCalendar(mission, currentToken);
+            if (gId) {
+              mission.googleEventId = gId;
+              mission.synced = true;
+            }
+          } catch (err: any) {
+            if (err?.message === '401_UNAUTHORIZED') {
+              addLog('Token expirado ao agendar. Renovando...');
+              try {
+                const reauth = await googleSignIn();
+                if (reauth) {
+                  setAccessToken(reauth.accessToken);
+                  setUser(reauth.user);
+                  currentToken = reauth.accessToken;
+                  const gId = await pushEventToGoogleCalendar(mission, reauth.accessToken);
+                  if (gId) {
+                    mission.googleEventId = gId;
+                    mission.synced = true;
+                  }
+                } else {
+                  setAccessToken(null);
+                  currentToken = null;
+                }
+              } catch (reauthErr) {
+                setAccessToken(null);
+                currentToken = null;
+                addLog('A renovação do login falhou.');
+                alert('Sua sessão expirou. Conecte-se novamente ao Google Agenda.');
+              }
+            }
+          }
+        }
+        finalExtraMissions.push(mission);
+        if (user) {
+          uploadMission(user.uid, mission).catch(console.error);
+        }
+      }
+
+      saveMissionsState([...finalExtraMissions, ...updatedMissionsResolved]);
+      if (user) {
+        const updatedItem = updatedMissionsResolved.find((m) => m.id === payload.id);
+        if (updatedItem) {
+          uploadMission(user.uid, updatedItem).catch(console.error);
+        }
+      }
+      addLog(`Atualizada série selecionada de missões (${targetIds.length + 1} alteradas) e integrada(s) ${finalExtraMissions.length} nova(s) ocorrência(s).`);
+    } else {
+      saveMissionsState(updatedMissionsResolved);
+      if (user) {
+        const updatedItem = updatedMissionsResolved.find((m) => m.id === payload.id);
+        if (updatedItem) {
+          uploadMission(user.uid, updatedItem).catch(console.error);
+        }
+      }
+      addLog(`Atualizada série selecionada de missões (${targetIds.length} alteradas).`);
+    }
+
+    setEditMission(null);
+  };
+
   // Deletion logic
   const handleDeleteMission = (id: string, applyToSeries?: boolean) => {
     console.log('Attempting to delete mission:', id);
@@ -1870,27 +2264,27 @@ export default function App() {
         <div className="absolute top-[-10%] left-[-10%] w-96 h-96 bg-purple-200/50 rounded-full blur-3xl" />
         <div className="absolute bottom-[-10%] right-[-10%] w-96 h-96 bg-indigo-200/50 rounded-full blur-3xl" />
         
-        <div className="bg-white/80 backdrop-blur-xl border border-purple-100 rounded-3xl p-8 max-w-md w-full shadow-2xl relative z-10 flex flex-col items-center text-center space-y-6">
-          <div className="w-16 h-16 bg-gradient-to-tr from-purple-700 to-indigo-600 rounded-2xl flex items-center justify-center shadow-lg shadow-purple-900/20 mb-2">
+        <div className="bg-white/80 backdrop-blur-xl border border-purple-100 rounded-3xl p-8 max-w-md w-full shadow-2xl relative z-10 flex flex-col items-center text-center space-y-5">
+          <div className="w-16 h-16 bg-gradient-to-tr from-purple-700 to-indigo-600 rounded-2xl flex items-center justify-center shadow-lg shadow-purple-900/20 mb-1">
             <Church className="w-8 h-8 text-white" />
           </div>
           
-          <div className="space-y-2">
+          <div className="space-y-1">
             <h1 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Eu Agenda Missionária</h1>
-            <p className="text-sm text-slate-600">
-              Faça login para criar, acessar e sincronizar seus eventos e missões católicas em todos os seus dispositivos.
+            <p className="text-xs text-slate-600">
+              Faça login para gerenciar e sincronizar seus eventos e missões católicas em todos os seus dispositivos.
             </p>
           </div>
 
           <button
             onClick={handleGoogleLogin}
             disabled={isAuthenticating}
-            className="w-full bg-white border border-slate-200 hover:bg-slate-50 text-slate-800 font-bold py-3 px-4 rounded-xl shadow-sm flex items-center justify-center gap-3 transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full bg-white border border-slate-200 hover:bg-slate-50 text-slate-800 font-bold py-2.5 px-4 rounded-xl shadow-xs flex items-center justify-center gap-3 transition-all hover:scale-[1.01] active:scale-[0.99] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed text-xs"
           >
-            {isAuthenticating ? (
-              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-slate-800"></div>
+            {isAuthenticating && !manualEmail ? (
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-slate-800"></div>
             ) : (
-              <svg className="w-5 h-5" viewBox="0 0 24 24">
+              <svg className="w-4 h-4" viewBox="0 0 24 24">
                 <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
                 <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
                 <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
@@ -1898,8 +2292,107 @@ export default function App() {
                 <path d="M1 1h22v22H1z" fill="none" />
               </svg>
             )}
-            {isAuthenticating ? 'Carregando...' : 'Continuar com Google'}
+            {isAuthenticating && !manualEmail ? 'Carregando...' : 'Continuar com Google'}
           </button>
+
+          <div className="flex items-center my-2 w-full">
+            <div className="flex-1 border-t border-slate-200"></div>
+            <span className="px-3 text-[10px] text-slate-400 font-extrabold uppercase tracking-wide">Ou por e-mail manual</span>
+            <div className="flex-1 border-t border-slate-200"></div>
+          </div>
+
+          <form 
+            onSubmit={manualAuthMode === 'login' ? handleManualLogin : handleManualSignUp} 
+            className="w-full space-y-3 text-left"
+          >
+            {manualError && (
+              <div className="p-3 text-left bg-red-50 border border-red-200 text-red-700 rounded-xl text-[11px] font-semibold leading-relaxed">
+                {manualError}
+              </div>
+            )}
+
+            {manualAuthMode === 'signup' && (
+              <div className="space-y-1">
+                <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-tight">Nome Completo</label>
+                <input
+                  type="text"
+                  placeholder="Seu nome completo"
+                  value={manualDisplayName}
+                  onChange={(e) => setManualDisplayName(e.target.value)}
+                  className="w-full text-xs px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-purple-600 focus:border-transparent transition"
+                  required
+                />
+              </div>
+            )}
+
+            <div className="space-y-1">
+              <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-tight">E-mail</label>
+              <input
+                type="email"
+                placeholder="seu.email@exemplo.com"
+                value={manualEmail}
+                onChange={(e) => setManualEmail(e.target.value)}
+                className="w-full text-xs px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-purple-600 focus:border-transparent transition"
+                required
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-tight">Senha</label>
+              <input
+                type="password"
+                placeholder="Sua senha (mínimo 6 dígitos)"
+                value={manualPassword}
+                onChange={(e) => setManualPassword(e.target.value)}
+                className="w-full text-xs px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-purple-600 focus:border-transparent transition"
+                required
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={isAuthenticating}
+              className="w-full mt-2 bg-purple-700 hover:bg-purple-800 text-white font-bold py-2.5 px-4 rounded-xl shadow-xs transition-colors hover:scale-[1.01] active:scale-[0.99] cursor-pointer text-xs disabled:opacity-50 text-center flex items-center justify-center font-sans uppercase tracking-tight"
+            >
+              {isAuthenticating && manualEmail ? (
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+              ) : (
+                manualAuthMode === 'login' ? 'Acessar Agenda' : 'Cadastrar e Entrar'
+              )}
+            </button>
+          </form>
+
+          <div className="pt-2">
+            {manualAuthMode === 'login' ? (
+              <p className="text-xs text-slate-500 font-medium">
+                Não tem conta?{' '}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setManualAuthMode('signup');
+                    setManualError('');
+                  }}
+                  className="text-purple-700 font-black hover:underline cursor-pointer"
+                >
+                  Cadastre-se grátis
+                </button>
+              </p>
+            ) : (
+              <p className="text-xs text-slate-500 font-medium">
+                Já possui uma conta?{' '}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setManualAuthMode('login');
+                    setManualError('');
+                  }}
+                  className="text-purple-700 font-black hover:underline cursor-pointer"
+                >
+                  Entrar aqui
+                </button>
+              </p>
+            )}
+          </div>
         </div>
       </div>
     );
@@ -2247,38 +2740,214 @@ export default function App() {
       />
 
       {/* Custom Deletion Confirmation Dialog */}
-      {missionToDelete && (
-        <div className="fixed inset-0 bg-purple-950/60 backdrop-blur-xs flex items-center justify-center p-4 z-[100]" id="delete-confirmation-dialog">
-          <div className="bg-white rounded-2xl border border-red-200 shadow-2xl w-full max-w-sm overflow-hidden flex flex-col p-6 space-y-4">
-            <div className="flex items-start gap-4">
-              <div className="p-3 rounded-2xl bg-red-50 text-red-650 shrink-0 border border-red-100 flex items-center justify-center">
-                <AlertTriangle className="w-5 h-5" />
+      {missionToDelete && (() => {
+        const matchingSeriesEvents = missions.filter(
+          m => m.id === missionToDelete.id || (
+            m.title === missionToDelete.title &&
+            m.movement === missionToDelete.movement &&
+            m.startTime === missionToDelete.startTime
+          )
+        );
+        const hasSeries = matchingSeriesEvents.length > 1;
+
+        return (
+          <div className="fixed inset-0 bg-purple-950/60 backdrop-blur-xs flex items-center justify-center p-4 z-[100]" id="delete-confirmation-dialog">
+            <div className="bg-white rounded-2xl border border-red-200 shadow-2xl w-full max-w-sm overflow-hidden flex flex-col p-6 space-y-4">
+              <div className="flex items-start gap-4">
+                <div className="p-3 rounded-2xl bg-red-50 text-red-650 shrink-0 border border-red-100 flex items-center justify-center animate-pulse">
+                  <AlertTriangle className="w-5 h-5 text-red-650 animate-bounce" />
+                </div>
+                <div className="space-y-1 select-text">
+                  <h3 className="font-extrabold text-xs text-red-950 uppercase tracking-wider">Confirmar Exclusão</h3>
+                  <p className="text-xs text-slate-650 leading-relaxed">
+                    Como deseja prosseguir com a exclusão de <strong className="text-slate-900">"{missionToDelete.title}"</strong>?<br />
+                    Esta ação removerá permanentemente os registros do cache e da nuvem.
+                  </p>
+                </div>
               </div>
-              <div className="space-y-1 select-text">
-                <h3 className="font-extrabold text-xs text-red-950 uppercase tracking-wider">Confirmar Exclusão</h3>
-                <p className="text-xs text-slate-650 leading-relaxed">
-                  Tem certeza de que deseja arquivar ou excluir a missão {missionToDeleteSeries ? 'EM SÉRIE' : ''} <strong className="text-slate-900">"{missionToDelete.title}"</strong>?<br />
-                  Esta ação removerá permanentemente os registros do cache e da nuvem.
+              
+              {hasSeries ? (
+                <div className="flex flex-col gap-2 pt-2 border-t border-slate-100 w-full">
+                  <button
+                    type="button"
+                    onClick={() => executeDeleteMission(missionToDelete.id, false)}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-red-50 hover:bg-red-100 border border-red-200 text-red-700 text-xs font-extrabold shadow-xs transition cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" /> Excluir apenas este evento
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => executeDeleteMission(missionToDelete.id, true)}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-extrabold shadow-sm transition cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" /> Excluir em série ({matchingSeriesEvents.length} eventos)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setMissionToDelete(null); setMissionToDeleteSeries(false); }}
+                    className="w-full px-3 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-250 text-xs font-semibold text-slate-700 transition cursor-pointer text-center"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => { setMissionToDelete(null); setMissionToDeleteSeries(false); }}
+                    className="px-3 py-1.5 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-xs font-extrabold text-slate-600 transition cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => executeDeleteMission(missionToDelete.id, false)}
+                    className="px-3.5 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-extrabold shadow-sm transition cursor-pointer"
+                  >
+                    Confirmar Exclusão
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Custom Series Edit Selection Dialog */}
+      {seriesEditData && (
+        <div className="fixed inset-0 bg-purple-950/60 backdrop-blur-xs flex items-center justify-center p-4 z-[110]" id="series-edit-dialog">
+          <div className="bg-white rounded-2xl border border-purple-200 shadow-2xl w-full max-w-md overflow-hidden flex flex-col p-6 space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 rounded-2xl bg-purple-50 text-purple-700 shrink-0 border border-purple-100 flex items-center justify-center">
+                <Layers className="w-5 h-5 animate-pulse" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="font-extrabold text-xs text-purple-950 uppercase tracking-wider">Editar Eventos em Série</h3>
+                <p className="text-xs text-slate-655 leading-normal">
+                  Identificamos eventos iguais com o mesmo nome e movimento. Escolha quais ocorrências desta série você deseja atualizar:
                 </p>
               </div>
             </div>
-            
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+
+            {/* List of matching events with checkboxes */}
+            <div className="max-h-60 overflow-y-auto border border-purple-100 rounded-xl p-2 bg-purple-50/20 divide-y divide-purple-100/50">
+              {/* Baseline/Current event being edited */}
+              <label 
+                className="flex items-center gap-3 p-2.5 cursor-pointer hover:bg-white rounded-lg transition"
+              >
+                <input
+                  type="checkbox"
+                  checked={!!seriesEditData.selectedIds[seriesEditData.payload.id!]}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    setSeriesEditData(prev => prev ? {
+                      ...prev,
+                      selectedIds: {
+                        ...prev.selectedIds,
+                        [prev.payload.id!]: checked
+                      }
+                    } : null);
+                  }}
+                  className="w-4 h-4 rounded text-purple-600 focus:ring-purple-500 border-purple-300"
+                />
+                <div className="text-xs">
+                  <div className="font-bold text-purple-950">{seriesEditData.payload.title} <span className="text-[10px] bg-purple-100 text-purple-700 px-1 py-0.5 rounded font-black uppercase">Este Evento</span></div>
+                  <div className="text-slate-500 font-mono text-[11px] flex gap-2 mt-0.5">
+                    <span>🗓️ {seriesEditData.baseMission.dateStr ? new Date(seriesEditData.baseMission.dateStr + 'T12:00:00').toLocaleDateString('pt-BR') : 'Sem data'}</span>
+                    <span>⌚ {seriesEditData.baseMission.startTime}</span>
+                  </div>
+                </div>
+              </label>
+
+              {/* Other matching events */}
+              {seriesEditData.matches.map((m) => (
+                <label 
+                  key={m.id}
+                  className="flex items-center gap-3 p-2.5 cursor-pointer hover:bg-white rounded-lg transition"
+                >
+                  <input
+                    type="checkbox"
+                    checked={!!seriesEditData.selectedIds[m.id!]}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setSeriesEditData(prev => prev ? {
+                        ...prev,
+                        selectedIds: {
+                          ...prev.selectedIds,
+                          [m.id!]: checked
+                        }
+                      } : null);
+                    }}
+                    className="w-4 h-4 rounded text-purple-600 focus:ring-purple-500 border-purple-300"
+                  />
+                  <div className="text-xs">
+                    <div className="font-semibold text-slate-800">{m.title}</div>
+                    <div className="text-slate-500 font-mono text-[11px] flex gap-2 mt-0.5">
+                      <span>🗓️ {m.dateStr ? new Date(m.dateStr + 'T12:00:00').toLocaleDateString('pt-BR') : ''}</span>
+                      <span>⌚ {m.startTime}</span>
+                    </div>
+                  </div>
+                </label>
+              ))}
+            </div>
+
+            {/* Quick Helper to Select All / Deselect All */}
+            <div className="flex justify-between items-center text-[10px] text-purple-700 font-bold px-1">
               <button
                 type="button"
-                onClick={() => { setMissionToDelete(null); setMissionToDeleteSeries(false); }}
-                className="px-3 py-1.5 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-xs font-extrabold text-slate-600 transition cursor-pointer"
+                onClick={() => {
+                  setSeriesEditData(prev => {
+                    if (!prev) return null;
+                    const next: Record<string, boolean> = { [prev.payload.id!]: true };
+                    prev.matches.forEach(m => { next[m.id!] = true; });
+                    return { ...prev, selectedIds: next };
+                  });
+                }}
+                className="hover:underline transition cursor-pointer"
+              >
+                ✓ Selecionar Todos
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setSeriesEditData(prev => {
+                    if (!prev) return null;
+                    const next: Record<string, boolean> = { [prev.payload.id!]: true };
+                    prev.matches.forEach(m => { next[m.id!] = false; });
+                    return { ...prev, selectedIds: next };
+                  });
+                }}
+                className="hover:underline text-slate-500 transition cursor-pointer"
+              >
+                ✕ Deselecionar Outros
+              </button>
+            </div>
+
+            {/* Action buttons */}
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setSeriesEditData(null)}
+                className="px-3 py-1.5 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-xs font-semibold text-slate-650 transition cursor-pointer"
               >
                 Cancelar
               </button>
               <button
                 type="button"
                 onClick={() => {
-                  executeDeleteMission(missionToDelete.id, missionToDeleteSeries);
+                  const idsToSave = Object.entries(seriesEditData.selectedIds)
+                    .filter(([_, enabled]) => enabled)
+                    .map(([id]) => id);
+                  
+                  if (idsToSave.length === 0) {
+                    alert('Por favor, selecione pelo menos um evento para editar.');
+                    return;
+                  }
+                  executeCheckedSeriesSave(seriesEditData.payload, idsToSave);
                 }}
-                className="px-3.5 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-extrabold shadow-sm transition cursor-pointer"
+                className="px-4 py-1.5 rounded-xl bg-purple-750 hover:bg-purple-700 text-white text-xs font-extrabold shadow-md transition cursor-pointer flex items-center gap-1"
               >
-                Confirmar Exclusão {missionToDeleteSeries ? 'da Série' : ''}
+                <Save className="w-3.5 h-3.5" /> Salvar Alterações
               </button>
             </div>
           </div>

@@ -357,9 +357,9 @@ export default function DayActivityModal({
     setIsCreatingNew(false);
   }, [selectedDay, isOpen]);
 
-  // Load custom movement colors map
+  // Load custom movement colors map and listen for real-time changes
   useEffect(() => {
-    if (isOpen) {
+    const handleReload = () => {
       const savedColors = localStorage.getItem('catholic_movement_colors_maria');
       if (savedColors) {
         try {
@@ -368,7 +368,14 @@ export default function DayActivityModal({
           console.error('Erro ao ler cores de movimentos:', e);
         }
       }
+    };
+
+    if (isOpen) {
+      handleReload();
     }
+
+    window.addEventListener('customMovementsChanged', handleReload);
+    return () => window.removeEventListener('customMovementsChanged', handleReload);
   }, [isOpen]);
 
   // Sync selectedColorClass when movement, useCustomMovement, customMovementName or movementColors change
@@ -547,6 +554,44 @@ export default function DayActivityModal({
     } else {
       setUseCustomMovement(false);
       setMovementLogoUrl('');
+    }
+  };
+
+  const handleSaveCustomMovementDirectly = () => {
+    const name = customMovementName.trim();
+    if (!name) return;
+
+    try {
+      const updatedColors = { ...movementColors, [name]: selectedColorClass };
+      setMovementColors(updatedColors);
+      localStorage.setItem('catholic_movement_colors_maria', JSON.stringify(updatedColors));
+
+      const savedCustom = localStorage.getItem('saved_custom_catholic_movements');
+      const customObj = savedCustom ? JSON.parse(savedCustom) : {};
+      customObj[name] = {
+        name: name,
+        fullName: name,
+        iconName: 'Church',
+        colorClass: selectedColorClass || 'bg-purple-600',
+        borderClass: 'border-purple-400',
+        textClass: 'text-purple-600',
+        gradientClass: 'from-purple-600 to-indigo-750',
+        bannerUrl: 'https://images.unsplash.com/photo-1438232992991-995b7058bbb3?auto=format&fit=crop&w=800&q=80',
+        shortDesc: 'Movimento personalizado cadastrado pelo missionário.',
+        logoUrl: movementLogoUrl || undefined
+      };
+      localStorage.setItem('saved_custom_catholic_movements', JSON.stringify(customObj));
+      
+      window.dispatchEvent(new Event('customMovementsChanged'));
+
+      setMovement(name);
+      setUseCustomMovement(false);
+      setCustomMovementName('');
+      setMovementLogoUrl('');
+      
+      alert(`Movimento "${name}" cadastrado com sucesso e salvo na nuvem!`);
+    } catch (err) {
+      console.error('Error saving custom movement directly:', err);
     }
   };
 
@@ -922,6 +967,17 @@ export default function DayActivityModal({
                         )}
                       </div>
                     </div>
+                  </div>
+                  
+                  <div className="flex justify-end pt-1">
+                    <button
+                      type="button"
+                      onClick={handleSaveCustomMovementDirectly}
+                      disabled={!customMovementName.trim()}
+                      className="px-3 py-1 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-[10px] font-black uppercase text-white rounded-lg cursor-pointer flex items-center gap-1 shadow-sm transition-all"
+                    >
+                      <Save className="w-3.5 h-3.5" /> Cadastrar Movimento na Lista
+                    </button>
                   </div>
                 </div>
               )}

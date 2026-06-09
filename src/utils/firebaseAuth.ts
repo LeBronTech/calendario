@@ -10,6 +10,9 @@ import {
   GoogleAuthProvider,
   onAuthStateChanged,
   User,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  updateProfile,
 } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
@@ -92,5 +95,30 @@ export const logout = async () => {
   if (typeof window !== 'undefined') {
     localStorage.removeItem('_cached_google_token');
     sessionStorage.removeItem('_g_connected');
+  }
+};
+
+// Manual Sign In (Email & Password)
+export const signInWithEmail = async (email: string, password: string): Promise<User> => {
+  try {
+    const result = await signInWithEmailAndPassword(auth, email, password);
+    return result.user;
+  } catch (error: any) {
+    console.error('Erro de login manual:', error);
+    throw error;
+  }
+};
+
+// Manual Sign Up (Email, Password & Display Name)
+export const signUpWithEmail = async (email: string, password: string, displayName: string): Promise<User> => {
+  try {
+    const result = await createUserWithEmailAndPassword(auth, email, password);
+    if (displayName.trim()) {
+      await updateProfile(result.user, { displayName: displayName.trim() });
+    }
+    return result.user;
+  } catch (error: any) {
+    console.error('Erro de cadastro manual:', error);
+    throw error;
   }
 };
