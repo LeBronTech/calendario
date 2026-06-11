@@ -359,6 +359,36 @@ export default function MissionModal({
     }
   };
 
+  const handleTipoSelectChange = (val: string) => {
+    setTipo(val);
+    if (!editMission && val) {
+      // Find last added event with this tipo
+      const lastEvent = [...missions]
+        .filter((m) => m.tipo === val)
+        .sort((a, b) => {
+          const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+          const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+          if (timeA !== timeB) return timeB - timeA;
+          return (b.id || '').localeCompare(a.id || '');
+        })[0];
+
+      if (lastEvent) {
+        if (lastEvent.title) setTitle(lastEvent.title);
+        if (lastEvent.location) setLocation(lastEvent.location);
+        if (lastEvent.description) setDescription(lastEvent.description);
+        if (lastEvent.instagramUrl) setInstagramUrl(lastEvent.instagramUrl);
+        if (lastEvent.instagramImgUrl) setInstagramImgUrl(lastEvent.instagramImgUrl);
+        if (lastEvent.roles) setSelectedRoles(lastEvent.roles);
+        if (lastEvent.observation) setObservation(lastEvent.observation);
+        if (lastEvent.startTime) setStartTime(lastEvent.startTime);
+        if (lastEvent.endTime) setEndTime(lastEvent.endTime);
+        if (lastEvent.movementLogoUrl) setMovementLogoUrl(lastEvent.movementLogoUrl);
+        if (lastEvent.cardColor) setSelectedColorClass(lastEvent.cardColor);
+        if (lastEvent.movement) setMovement(lastEvent.movement);
+      }
+    }
+  };
+
   const handleSaveCustomMovementDirectly = () => {
     const name = customMovementName.trim();
     if (!name) return;
@@ -573,7 +603,7 @@ export default function MissionModal({
               </label>
               <select
                 value={tipo}
-                onChange={(e) => setTipo(e.target.value)}
+                onChange={(e) => handleTipoSelectChange(e.target.value)}
                 className="w-full bg-white border border-purple-200 rounded-xl px-2.5 py-1.5 outline-none focus:border-purple-600 font-bold text-purple-800 text-xs"
               >
                 {TIPO_OPTIONS.map((opt) => (

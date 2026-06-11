@@ -148,7 +148,7 @@ export default function CatholicEventsCalendar({
     setActiveSplashMonth(MONTHS_PT[currentDate.getMonth()]);
     const timer = setTimeout(() => {
       setActiveSplashMonth(null);
-    }, 300); // extremely fast display
+    }, 150); // extremely rapid active splash (150ms instead of 300ms)
     return () => clearTimeout(timer);
   }, [currentDate]);
 
@@ -1213,46 +1213,27 @@ export default function CatholicEventsCalendar({
             <AnimatePresence>
               {activeSplashMonth && (
                 <motion.div
-                  initial={{ opacity: 0, scale: 0.55, y: -5 }}
-                  animate={{ opacity: 1, scale: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 1.5, y: 5 }}
-                  transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.12, ease: 'easeOut' }}
                   className="absolute inset-0 z-30 flex items-center justify-center pointer-events-none select-none"
                 >
-                  <div className="bg-rose-950/90 text-white font-sans font-black text-xl md:text-3.5xl px-6 py-3.5 rounded-2xl shadow-2xl border border-rose-500/40 backdrop-blur-md flex flex-col items-center gap-1">
-                    <span className="uppercase tracking-widest text-[8.5px] text-rose-200">Exibindo Mês</span>
+                  <div className="bg-rose-950/95 text-white font-sans font-black text-xl md:text-2xl px-5 py-3 rounded-xl shadow-lg border border-rose-500/30 backdrop-blur-md flex flex-col items-center gap-0.5">
+                    <span className="uppercase tracking-widest text-[8px] text-rose-200 font-bold">Exibindo Mês</span>
                     <span className="drop-shadow-sm font-sans text-rose-100">{activeSplashMonth}</span>
                   </div>
                 </motion.div>
               )}
             </AnimatePresence>
 
-            <AnimatePresence initial={false} custom={direction} mode="popLayout">
+            <AnimatePresence initial={false} mode="wait">
               <motion.div
                 key={`${year}-${month}`}
-                custom={direction}
-                variants={{
-                  enter: (dir: number) => ({
-                    x: dir * 35,
-                    opacity: 0
-                  }),
-                  center: {
-                    x: 0,
-                    opacity: 1
-                  },
-                  exit: (dir: number) => ({
-                    x: dir * -35,
-                    opacity: 0,
-                    pointerEvents: 'none'
-                  })
-                }}
-                initial="enter"
-                animate="center"
-                exit="exit"
-                transition={{
-                  x: { type: 'spring', stiffness: 650, damping: 45 },
-                  opacity: { duration: 0.10 }
-                }}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.08 }}
                 className="grid grid-cols-7 gap-1.5 w-full"
               >
                 {dayCells.map((day, idx) => {

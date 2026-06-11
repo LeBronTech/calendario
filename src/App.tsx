@@ -593,6 +593,53 @@ export default function App() {
       loadedMissions = Array.from(uniqueMissions.values());
     }
 
+    // Dynamic generation of Santa Missa daily events from Jan 27, 2026 to Feb 27, 2026
+    const generatedMasses: Mission[] = [];
+    try {
+      const massStart = new Date('2026-01-27T00:00:00');
+      const massEnd = new Date('2026-02-27T00:00:00');
+      const curr = new Date(massStart);
+      while (curr <= massEnd) {
+        const year = curr.getFullYear();
+        const month = String(curr.getMonth() + 1).padStart(2, '0');
+        const day = String(curr.getDate()).padStart(2, '0');
+        const dateStr = `${year}-${month}-${day}`;
+        const massId = `missa-jan27-feb27-${dateStr}`;
+        const wasDeletedKey = `deleted_mass_${dateStr}`;
+        if (!localStorage.getItem(wasDeletedKey)) {
+          generatedMasses.push({
+            id: massId,
+            title: 'Santa Missa',
+            movement: CatholicMovement.PAROQUIAL,
+            tipo: 'missa',
+            dateStr,
+            startTime: '19:00',
+            endTime: '20:00',
+            location: 'Igreja Matriz',
+            description: 'Missa diária paroquial consagrada.',
+            status: 'confirmed',
+            checklist: [],
+            roles: [],
+            observation: 'Adicionar missa diária de 19h as 20h.',
+            createdAt: new Date().toISOString(),
+            synced: false
+          });
+        }
+        curr.setDate(curr.getDate() + 1);
+      }
+    } catch (e) {
+      console.error('Error generating daily Mass preset:', e);
+    }
+
+    if (generatedMasses.length > 0) {
+      const existingIds = new Set(loadedMissions.map((m) => m.id));
+      generatedMasses.forEach((m) => {
+        if (!existingIds.has(m.id)) {
+          loadedMissions.push(m);
+        }
+      });
+    }
+
     localStorage.setItem('missions_db_maria', JSON.stringify(loadedMissions));
     setMissions(loadedMissions);
 
@@ -2147,6 +2194,14 @@ export default function App() {
 
     runAsyncDelete();
 
+    // Mark generated masses as deleted to prevent regeneration on load
+    targetIds.forEach(tId => {
+      if (tId.startsWith('missa-jan27-feb27-')) {
+        const dStr = tId.replace('missa-jan27-feb27-', '');
+        localStorage.setItem(`deleted_mass_${dStr}`, 'true');
+      }
+    });
+
     const nextList = missions.filter((m) => !targetIds.includes(m.id));
     saveMissionsState(nextList);
     if (user) {
@@ -2221,7 +2276,7 @@ export default function App() {
         const updatedMission = {
           ...m,
           attended,
-          status: attended ? 'completed' as const : m.status,
+          status: 'completed' as const,
           synced: false
         };
         if (user) {
@@ -2235,11 +2290,28 @@ export default function App() {
     addLog(`Presença atualizada: ${attended ? 'Compareceu ⛪' : 'Não pôde comparecer ❌'}`);
   };
 
-  const isEventPast = (m: Mission) => {
-    if (m.status === 'backlog' || !m.dateStr || !m.endTime) return false;
+  const isEventPast = (m: Mission | undefined | null) => {
+    if (!m || !m.dateStr) return false;
     try {
-      const eventEnd = new Date(`${m.dateStr}T${m.endTime}`);
-      return new Date() >= eventEnd;
+      const today = new Date();
+      const yr = today.getFullYear();
+      const mo = String(today.getMonth() + 1).padStart(2, '0');
+      const dy = String(today.getDate()).padStart(2, '0');
+      const todayStr = `${yr}-${mo}-${dy}`;
+
+      const targetDateStr = m.endDateStr || m.dateStr;
+
+      if (targetDateStr < todayStr) return true;
+      if (targetDateStr > todayStr) return false;
+
+      // If it is today, check end time if available, otherwise fallback to 23:59
+      const hr = String(today.getHours()).padStart(2, '0');
+      const mn = String(today.getMinutes()).padStart(2, '0');
+      const currentInt = hr + mn;
+
+      const tEndTime = m.endTime || '23:59';
+      const cleanEndTime = tEndTime.replace(':', '');
+      return currentInt >= cleanEndTime;
     } catch (e) {
       return false;
     }
@@ -2418,9 +2490,9 @@ export default function App() {
             </div>
             <div>
               <h1 id="app-title-header" className="text-lg font-black tracking-tighter text-slate-900 flex items-center gap-1.5 uppercase">
-                Eu Agenda Missionária
+                Eu missionário Agenda do LeBron
               </h1>
-              <p className="text-xs text-purple-700 font-extrabold tracking-tight uppercase">Eu Missionário</p>
+              <p className="text-xs text-purple-700 font-extrabold tracking-tight uppercase">Agenda de Atividades e Missões</p>
             </div>
           </div>
 
@@ -2462,9 +2534,10 @@ export default function App() {
                   {user.displayName?.[0]}
                 </div>
               )}
-              <div className="truncate shrink max-w-[120px]">
-                <p className="font-extrabold text-purple-900 leading-none truncate">{user.displayName}</p>
-                <span className="text-[9px] text-purple-400 font-bold">agenda synced</span>
+              <div className="truncate shrink max-w-[160px]">
+                <p className="font-extrabold text-purple-900 leading-none truncate">{user.displayName || 'Usuário Google'}</p>
+                <p className="text-[10px] text-purple-600 font-bold truncate mt-1">{user.email}</p>
+                <span className="text-[8px] text-purple-400 font-bold uppercase tracking-wider block mt-0.5">agenda synced</span>
               </div>
               <button
                 onClick={handleLogout}

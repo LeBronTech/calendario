@@ -1,6 +1,6 @@
 {
-  "name": "Agenda LeBron",
-  "description": "Agenda LeBron - Sistema integrado de gerenciamento de missões, secretaria e eventos católicos.",
+  "name": "Eu missionário Agenda do LeBron",
+  "description": "Eu missionário Agenda do LeBron - Gestão Integrada de Missões, Secretaria e Eventos Católicos.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

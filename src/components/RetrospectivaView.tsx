@@ -47,11 +47,28 @@ export default function RetrospectivaView({ missions, onUpdateAttendance }: Retr
   const [viewYear, setViewYear] = React.useState<number>(new Date().getFullYear());
   
   // Helper to identify if an event is in the past
-  const isEventPast = (m: Mission) => {
-    if (m.status === 'backlog' || !m.dateStr || !m.endTime) return false;
+  const isEventPast = (m: Mission | undefined | null) => {
+    if (!m || !m.dateStr) return false;
     try {
-      const eventEnd = new Date(`${m.dateStr}T${m.endTime}`);
-      return new Date() >= eventEnd;
+      const today = new Date();
+      const yr = today.getFullYear();
+      const mo = String(today.getMonth() + 1).padStart(2, '0');
+      const dy = String(today.getDate()).padStart(2, '0');
+      const todayStr = `${yr}-${mo}-${dy}`;
+
+      const targetDateStr = m.endDateStr || m.dateStr;
+
+      if (targetDateStr < todayStr) return true;
+      if (targetDateStr > todayStr) return false;
+
+      // If it is today, check end time if available, otherwise fallback to 23:59
+      const hr = String(today.getHours()).padStart(2, '0');
+      const mn = String(today.getMinutes()).padStart(2, '0');
+      const currentInt = hr + mn;
+
+      const tEndTime = m.endTime || '23:59';
+      const cleanEndTime = tEndTime.replace(':', '');
+      return currentInt >= cleanEndTime;
     } catch (e) {
       return false;
     }
@@ -136,8 +153,8 @@ export default function RetrospectivaView({ missions, onUpdateAttendance }: Retr
   // 1. Pending confirmation questions (1 minute past end-time, and attended is undefined)
   const pendingAttendanceMissions = missions.filter(m => isEventPast(m) && m.attended === undefined)
     .sort((a, b) => {
-      const dateA = new Date(`${a.dateStr}T${a.endTime}`).getTime();
-      const dateB = new Date(`${b.dateStr}T${b.endTime}`).getTime();
+      const dateA = new Date(`${a.dateStr}T${a.endTime || '23:59'}`).getTime();
+      const dateB = new Date(`${b.dateStr}T${b.endTime || '23:59'}`).getTime();
       return dateA - dateB; // oldest finished events first
     });
 

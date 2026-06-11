@@ -30,87 +30,98 @@ const DAYS_SHORT_PT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
  * Supports custom movement style & uploaded custom logo images from gallery.
  */
 function LogoStack({ dayMissions }: { dayMissions: Mission[] }) {
-  const [activeIndex, setActiveIndex] = useState(0);
+  const [offset, setOffset] = useState(0);
 
   useEffect(() => {
-    if (dayMissions.length <= 1) return;
+    if (dayMissions.length <= 2) return;
     const interval = setInterval(() => {
-      setActiveIndex((prev) => (prev + 1) % dayMissions.length);
-    }, 2800); // Transitions every 2.8s
+      setOffset((prev) => (prev + 1) % dayMissions.length);
+    }, 2000); // cycle through missions every 2s
     return () => clearInterval(interval);
-  }, [dayMissions]);
+  }, [dayMissions.length]);
 
   if (dayMissions.length === 0) return null;
 
-  // Single logo rendering helper
-  const renderSingleLogo = (m: Mission) => {
-    const style = getMovementStyle(m.movement);
-    const label = style?.name?.slice(0, 3) || '⛪';
-    const logoImgUrl = m.movementLogoUrl || style?.logoUrl;
-    
-    if (logoImgUrl) {
-      return (
-        <div
-          className="w-6 h-6 md:w-8 md:h-8 rounded-full border border-purple-150 bg-white flex items-center justify-center shadow-xs select-none overflow-hidden"
-          title={m.movement}
-        >
-          <img src={logoImgUrl} alt={m.movement} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-        </div>
-      );
-    }
-
+  // Statically stacked vertically if <= 2 missions to keep things neat and fast
+  if (dayMissions.length <= 2) {
     return (
-      <div
-        className={`w-6 h-6 md:w-8 md:h-8 rounded-full border ${style?.borderClass || 'border-purple-300'} ${m.cardColor || style?.colorClass || 'bg-purple-500'} text-white flex items-center justify-center font-black text-[9px] md:text-[10px] shadow-xs select-none`}
-        title={style?.fullName}
-      >
-        <span>{label}</span>
-      </div>
-    );
-  };
-
-  if (dayMissions.length === 1) {
-    return renderSingleLogo(dayMissions[0]);
-  }
-
-  // Multi-logos dynamic swapping layout
-  return (
-    <div className="relative w-8 h-8 md:w-9 md:h-9 flex items-center justify-center select-none">
-      <AnimatePresence mode="popLayout">
+      <div className="flex flex-col -space-y-1.5 md:-space-y-2 justify-center items-center select-none py-0.5">
         {dayMissions.map((m, idx) => {
           const style = getMovementStyle(m.movement);
-          const logoImgUrl = m.movementLogoUrl || style?.logoUrl;
-          // Determine the cycle relative offset position of the logo
-          const position = (idx - activeIndex + dayMissions.length) % dayMissions.length;
-
-          // Only draw the front item (position 0) and the back item (position 1) to keep the layout neat
-          if (position > 1) return null;
-
-          const isFront = position === 0;
           const label = style?.name?.slice(0, 3) || '⛪';
+          const logoImgUrl = m.movementLogoUrl || style?.logoUrl;
+
+          if (logoImgUrl) {
+            return (
+              <div
+                key={m.id || idx}
+                className="w-5.5 h-5.5 md:w-7 md:h-7 rounded-full border border-purple-200/80 bg-white flex items-center justify-center shadow-xs overflow-hidden relative transition transform hover:scale-110"
+                title={m.title || m.movement}
+                style={{ zIndex: 10 - idx }}
+              >
+                <img
+                  src={logoImgUrl}
+                  alt={m.movement}
+                  className="w-full h-full object-cover"
+                  referrerPolicy="no-referrer"
+                  loading="lazy"
+                />
+              </div>
+            );
+          }
+
+          return (
+            <div
+              key={m.id || idx}
+              className={`w-5.5 h-5.5 md:w-7 md:h-7 rounded-full border ${style?.borderClass || 'border-purple-300'} ${m.cardColor || style?.colorClass || 'bg-purple-500'} text-white flex items-center justify-center font-black text-[7.5px] md:text-[9px] shadow-xs relative transition transform hover:scale-110`}
+              title={m.title || style?.fullName}
+              style={{ zIndex: 10 - idx }}
+            >
+              <span>{label}</span>
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
+  // If 3 or 4 (or more) missions, show first 2, then cycle sequentially with a beautiful vertical sliding transition
+  const firstIndex = offset % dayMissions.length;
+  const secondIndex = (offset + 1) % dayMissions.length;
+  const itemsToShow = [dayMissions[firstIndex], dayMissions[secondIndex]];
+
+  return (
+    <div className="flex flex-col -space-y-1.5 md:-space-y-2 justify-center items-center select-none py-0.5 h-11 md:h-14 overflow-hidden relative">
+      <AnimatePresence mode="popLayout" initial={false}>
+        {itemsToShow.map((m, idx) => {
+          const style = getMovementStyle(m.movement);
+          const label = style?.name?.slice(0, 3) || '⛪';
+          const logoImgUrl = m.movementLogoUrl || style?.logoUrl;
 
           return (
             <motion.div
-              key={m.id + '-' + idx}
-              initial={{ scale: 0.7, x: isFront ? -10 : 4, zIndex: isFront ? 10 : 0, opacity: 0 }}
-              animate={{
-                scale: isFront ? 1 : 0.75,
-                x: isFront ? 0 : 5,
-                y: isFront ? 0 : -3,
-                zIndex: isFront ? 10 : 5,
-                opacity: 1,
-              }}
-              exit={{ scale: 0.7, x: 10, opacity: 0, zIndex: 0 }}
-              transition={{ duration: 0.45, ease: 'easeInOut' }}
-              className="absolute"
-              title={style?.fullName}
+              key={`${m.id || m.title}-${idx}`}
+              initial={{ scale: 0.7, y: 10, opacity: 0 }}
+              animate={{ scale: 1, y: 0, opacity: 1 }}
+              exit={{ scale: 0.7, y: -10, opacity: 0 }}
+              transition={{ duration: 0.35, ease: 'easeInOut' }}
+              className="w-5.5 h-5.5 md:w-7 md:h-7 shrink-0"
+              style={{ zIndex: 10 - idx }}
             >
               {logoImgUrl ? (
-                <div className="w-6 h-6 md:w-7.5 md:h-7.5 rounded-full border border-purple-150 bg-white flex items-center justify-center shadow-md overflow-hidden">
-                  <img src={logoImgUrl} alt={m.movement} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                <div className="w-full h-full rounded-full border border-purple-200/80 bg-white flex items-center justify-center shadow-xs overflow-hidden">
+                  <img
+                    src={logoImgUrl}
+                    alt={m.movement}
+                    className="w-full h-full object-cover"
+                    referrerPolicy="no-referrer"
+                    loading="lazy"
+                  />
                 </div>
               ) : (
-                <div className={`w-6 h-6 md:w-7.5 md:h-7.5 rounded-full border ${style?.borderClass || 'border-purple-300'} ${m.cardColor || style?.colorClass || 'bg-purple-500'} text-white flex items-center justify-center font-black text-[9px] md:text-[10px] shadow-md`}>
+                <div
+                  className={`w-full h-full rounded-full border ${style?.borderClass || 'border-purple-300'} ${m.cardColor || style?.colorClass || 'bg-purple-500'} text-white flex items-center justify-center font-black text-[7.5px] md:text-[9px] shadow-xs`}
+                >
                   <span>{label}</span>
                 </div>
               )}
@@ -149,7 +160,7 @@ export default function CalendarView({
     setActiveSplashMonth(MONTHS_PT[currentDate.getMonth()]);
     const timer = setTimeout(() => {
       setActiveSplashMonth(null);
-    }, 300); // extremely fast display
+    }, 150); // extremely rapid active splash (150ms instead of 300ms)
     return () => clearTimeout(timer);
   }, [currentDate]);
 
@@ -332,46 +343,27 @@ export default function CalendarView({
         <AnimatePresence>
           {activeSplashMonth && (
             <motion.div
-              initial={{ opacity: 0, scale: 0.55, y: -5 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 1.5, y: 5 }}
-              transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.12, ease: 'easeOut' }}
               className="absolute inset-0 z-30 flex items-center justify-center pointer-events-none select-none"
             >
-              <div className="bg-purple-950/90 text-white font-sans font-black text-xl md:text-3.5xl px-6 py-3.5 rounded-2xl shadow-2xl border border-purple-500/40 backdrop-blur-md flex flex-col items-center gap-1">
-                <span className="uppercase tracking-widest text-[8.5px] text-purple-200">Exibindo Mês</span>
+              <div className="bg-purple-950/95 text-white font-sans font-black text-xl md:text-2xl px-5 py-3 rounded-xl shadow-lg border border-purple-500/30 backdrop-blur-md flex flex-col items-center gap-0.5">
+                <span className="uppercase tracking-widest text-[8px] text-purple-200 font-bold">Exibindo Mês</span>
                 <span className="drop-shadow-sm font-sans text-purple-100">{activeSplashMonth}</span>
               </div>
             </motion.div>
           )}
         </AnimatePresence>
 
-        <AnimatePresence initial={false} custom={direction} mode="popLayout">
+        <AnimatePresence initial={false} mode="wait">
           <motion.div
             key={`${year}-${month}`}
-            custom={direction}
-            variants={{
-              enter: (dir: number) => ({
-                x: dir * 35,
-                opacity: 0
-              }),
-              center: {
-                x: 0,
-                opacity: 1
-              },
-              exit: (dir: number) => ({
-                x: dir * -35,
-                opacity: 0,
-                pointerEvents: 'none'
-              })
-            }}
-            initial="enter"
-            animate="center"
-            exit="exit"
-            transition={{
-              x: { type: 'spring', stiffness: 650, damping: 45 },
-              opacity: { duration: 0.10 }
-            }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.08 }}
             className="grid grid-cols-7 gap-1 md:gap-1.5 w-full"
           >
             {dayCells.map((day, idx) => {
