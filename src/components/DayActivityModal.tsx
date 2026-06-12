@@ -843,12 +843,35 @@ export default function DayActivityModal({
       | { type: 'event'; mission: Mission; startM: number; endM: number }
     )[] = [];
     
-    let currentMin = 0;
+    let startHour = 0;
+    let endHour = 24;
+
+    if (sortedDayMissions.length > 0) {
+      const earliestMins = Math.min(...sortedDayMissions.map((m) => timeToMins(m.startTime || '19:00')));
+      const latestMins = Math.max(
+        ...sortedDayMissions.map((m) =>
+          m.endTime ? timeToMins(m.endTime) : Math.min(timeToMins(m.startTime || '19:00') + 60, 1440)
+        )
+      );
+      
+      startHour = Math.max(0, Math.floor(earliestMins / 60) - 1);
+      endHour = Math.min(24, Math.ceil(latestMins / 60) + 1);
+    } else {
+      startHour = 8;
+      endHour = 18;
+    }
+
+    let currentMin = startHour * 60;
+    const endMinLimit = endHour * 60;
     
     trackMissions.forEach((m) => {
       const startM = timeToMins(m.startTime || '19:00');
       const endM = m.endTime ? timeToMins(m.endTime) : Math.min(startM + 60, 1440);
       
+      if (startM < currentMin) {
+        return;
+      }
+
       while (currentMin + 60 <= startM) {
         const hourNum = Math.floor(currentMin / 60);
         segments.push({ type: 'empty', hour: hourNum });
@@ -865,12 +888,12 @@ export default function DayActivityModal({
       currentMin = endM;
     });
     
-    while (currentMin + 60 <= 1440) {
+    while (currentMin + 60 <= endMinLimit) {
       const hourNum = Math.floor(currentMin / 60);
       segments.push({ type: 'empty', hour: hourNum });
       currentMin += 60;
     }
-    if (currentMin < 1440) {
+    if (currentMin < endMinLimit) {
       const hourNum = Math.floor(currentMin / 60);
       segments.push({ type: 'empty', hour: hourNum });
     }
@@ -1546,7 +1569,7 @@ export default function DayActivityModal({
                               return (
                                 <div
                                   key={idx}
-                                  className="flex-0 shrink-0 w-6 h-10 bg-purple-100/35 hover:bg-purple-200/40 border border-purple-200/20 rounded-lg flex flex-col justify-between items-center py-1 text-[7.5px] font-mono text-purple-400 font-bold transition"
+                                  className="flex-0 shrink-0 w-5 h-10 bg-purple-100/35 hover:bg-purple-200/40 border border-purple-200/20 rounded-lg flex flex-col justify-between items-center py-1 text-[7.5px] font-mono text-purple-400 font-bold transition"
                                   title={`Horário vago: ${String(seg.hour).padStart(2, '0')}:00`}
                                 >
                                   <span>{String(seg.hour).padStart(2, '0')}</span>
@@ -1556,7 +1579,7 @@ export default function DayActivityModal({
                             } else {
                               const m = seg.mission;
                               const duration = seg.endM - seg.startM;
-                              const widthVal = Math.max(130, duration * 1.5);
+                              const widthVal = Math.max(90, duration * 1.1);
                               const style = getMovementStyle(m.movement);
                               const isCurrentM = m.id === dayMissions[currentIndex]?.id;
                               
@@ -1623,46 +1646,12 @@ export default function DayActivityModal({
                       );
                     })}
                   </div>
-                  <p className="text-[9px] text-purple-400 font-bold italic leading-none">
-                    * Os horários sem atividade aparecem de forma compactada, enquanto as missões se adaptam dinamicamente à sua duração, listando os horários de início e fim nas extremidades.
-                  </p>
                 </div>
-
-                {/* Transport & Conflict Warning alerts list */}
-                {conflictsList.length > 0 && (
-                  <div className="space-y-2 pt-1 border-t border-purple-100/40">
-                    {conflictsList.map((conflict, idx) => (
-                      <div
-                        key={idx}
-                        className="bg-red-50/75 border border-red-200/60 rounded-xl p-3 text-xs text-red-950 space-y-1 block select-text"
-                      >
-                        <div className="flex items-center gap-2 text-red-800 font-extrabold text-[11px]">
-                          <AlertTriangle className="w-3.5 h-3.5 text-red-600 shrink-0" />
-                          <span>Conflito de Horário!</span>
-                        </div>
-
-                        <p className="text-[10px] text-red-900 leading-relaxed font-semibold">
-                          Múltiplos compromissos se chocam neste dia: <strong className="text-red-950">"{conflict.m1.title}"</strong> e <strong className="text-red-950">"{conflict.m2.title}"</strong>.
-                        </p>
-
-                        {conflict.sameCity ? (
-                          <div className="p-1 px-2 bg-emerald-50 border border-emerald-100 rounded text-[9px] text-emerald-990 font-black inline-block">
-                            📍 Mesma cidade: você consegue se dividir entre ambos!
-                          </div>
-                        ) : (
-                          <div className="p-2 bg-red-100/80 border border-red-200 rounded text-[9px] text-red-950 font-black block leading-relaxed">
-                            ⚠️ Locais em cidades distintas! '{conflict.m1.location}' e '{conflict.m2.location}'. O tempo de deslocamento tornará inviável.
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
 
               </div>
 
               {/* Stacked list of chronological cards with absolute visual clarity */}
-              <div className="space-y-5 max-h-[50vh] overflow-y-auto pr-1">
+              <div className="space-y-5">
                 {sortedDayMissions.map((m) => {
                   const activeStyle = getMovementStyle(m.movement);
                   const mSeriesCount = missions.filter(ex => 

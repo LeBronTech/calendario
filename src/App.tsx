@@ -2490,9 +2490,9 @@ export default function App() {
             </div>
             <div>
               <h1 id="app-title-header" className="text-lg font-black tracking-tighter text-slate-900 flex items-center gap-1.5 uppercase">
-                Eu missionário Agenda do LeBron
+                Eu Missionário
               </h1>
-              <p className="text-xs text-purple-700 font-extrabold tracking-tight uppercase">Agenda de Atividades e Missões</p>
+              <p className="text-xs text-purple-600 font-extrabold tracking-tight uppercase">Agenda do Lebron</p>
             </div>
           </div>
 
