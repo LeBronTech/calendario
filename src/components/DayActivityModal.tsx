@@ -915,7 +915,7 @@ export default function DayActivityModal({
   return (
     <div className="fixed inset-0 bg-purple-950/45 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in text-xs text-purple-950">
       {/* Modal Container in Purple Styling */}
-      <div className="bg-[#FAF8FF] rounded-2xl border-1.5 border-purple-200 shadow-2xl w-full max-w-xl overflow-hidden flex flex-col max-h-[92vh]">
+      <div className="bg-[#FAF8FF] rounded-2xl border-1.5 border-purple-200 shadow-2xl w-full max-w-xl overflow-hidden flex flex-col max-h-[92vh] relative">
         
         {/* Modal Header */}
         <div className="p-4 bg-purple-900 text-white flex items-center justify-between shadow-xs">
@@ -2011,6 +2011,17 @@ export default function DayActivityModal({
             {hasFormChanged ? 'Salvar' : 'Fechar'}
           </button>
         </div>
+
+        {!isCreatingNew && !isEditing && (
+          <button
+            type="button"
+            onClick={() => setIsCreatingNew(true)}
+            className="absolute bottom-16 right-5 w-9 h-9 bg-purple-600 hover:bg-purple-700 active:scale-95 text-white rounded-full flex items-center justify-center shadow-lg hover:shadow-xl transition-all z-40 border border-purple-300"
+            title="Adicionar Missão"
+          >
+            <Plus className="w-5 h-5 pointer-events-none" />
+          </button>
+        )}
 
       </div>
 
