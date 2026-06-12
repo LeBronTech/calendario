@@ -1754,12 +1754,7 @@ export default function DayActivityModal({
                             )}
                           </div>
                           
-                          <p className="text-[11px] leading-relaxed font-bold text-purple-900">
-                            {m.attended === undefined
-                              ? `Você esteve presente em "${m.title}"? Confirme para registrar suas dedicatórias e horas de missão.`
-                              : `Sua presença foi registrada como: ${m.attended ? 'Estive presente! Tempo integral incorporado na retrospectiva.' : 'Não fui/Não pôde comparecer.'}`}
-                          </p>
-                          
+
                           <div className="flex gap-2">
                             <button
                               type="button"
