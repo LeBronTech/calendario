@@ -330,7 +330,7 @@ export default function MissionModal({
       setUseCustomMovement(false);
       setMovementLogoUrl('');
 
-      if (!editMission && val) {
+      if (!editMission && val && !hasChanged) {
         // Find last added event with this movement
         const lastEvent = [...missions]
           .filter((m) => m.movement === val)
@@ -361,7 +361,7 @@ export default function MissionModal({
 
   const handleTipoSelectChange = (val: string) => {
     setTipo(val);
-    if (!editMission && val) {
+    if (!editMission && val && !hasChanged) {
       // Find last added event with this tipo
       const lastEvent = [...missions]
         .filter((m) => m.tipo === val)

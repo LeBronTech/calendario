@@ -171,8 +171,8 @@ export default function WarningCarousel({
               key={event.id}
               /* ... (keep drag/tap logic) ... */
               drag="x"
-              dragConstraints={{ left: 0, right: 0 }}
-              dragElastic={0.6}
+              dragConstraints={{ left: -100, right: 100 }}
+              dragElastic={0.2}
               onTapStart={() => {
                 dragOffsetRef.current = 0;
               }}

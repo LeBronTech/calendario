@@ -75,6 +75,7 @@ export const MOVEMENT_DATA: Record<CatholicMovement, MovementStyle> = {
     gradientClass: 'from-violet-600 to-fuchsia-600',
     bannerUrl: 'https://imgs.search.brave.com/bDfE-prwoOwjCsxrCwMC2SyfETBp-SaL0ffoj5N7HqE/rs:fit:860:0:0:0/g:ce/aHR0cHM6Ly9kaW9j/ZXNlc2Eub3JnLmJy/L3dwLWNvbnRlbnQv/dXBsb2Fkcy8yMDI0/LzA3L1Bhcm9xdWlh/LVNhbnRhLVJpdGEt/ZGUtQ2Fzc2lhLVNB/LUMud2VicA', // Church architecture/Liturgy sanctity
     shortDesc: 'Atividades pastorais paroquiais, sacramentos ordinários e solenidades litúrgicas.',
+    logoUrl: 'https://imgs.search.brave.com/xPC5r7IIPeHP3AACMc10P3Qu9UpnthZYmdsTimhY1Vc/rs:fit:860:0:0:0/g:ce/aHR0cHM6Ly9jZG4u/cGl4YWJheS5jb20v/cGhvdG8vMjAxMy8w/NC8yNi8yMC8wNi92/YXRpY2FuLTEwNzMx/N182NDAuanBn',
   },
   [CatholicMovement.EJC]: {
     name: 'EJC Santa Maria',
