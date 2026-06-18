@@ -31,17 +31,6 @@ export const MOVEMENT_DATA: Record<CatholicMovement, MovementStyle> = {
     shortDesc: 'Cultura de Pentecostes, grupos de oração carismáticos e efusão do Espírito Santo.',
     logoUrl: 'https://iili.io/B5Mh5Tx.jpg',
   },
-  [CatholicMovement.EJNS]: {
-    name: 'EJNS / ENS',
-    fullName: 'Jovens de Nossa Senhora',
-    iconName: 'Sparkles',
-    colorClass: 'bg-blue-500',
-    borderClass: 'border-blue-400',
-    textClass: 'text-blue-600',
-    gradientClass: 'from-blue-600 to-indigo-600',
-    bannerUrl: 'https://images.unsplash.com/photo-1447069387593-a5de0862481e?auto=format&fit=crop&w=800&q=80', // Marian blue/Celestial stars look
-    shortDesc: 'Espiritualidade mariana para jovens, vivência de sacramentos e partilha em equipe.',
-  },
   [CatholicMovement.SHALOM]: {
     name: 'Shalom',
     fullName: 'Comunidade Católica Shalom',
@@ -53,17 +42,6 @@ export const MOVEMENT_DATA: Record<CatholicMovement, MovementStyle> = {
     bannerUrl: 'https://images.unsplash.com/photo-1490730141103-6cac27aaab94?auto=format&fit=crop&w=800&q=80', // Tau and peace/reconciliated look
     shortDesc: 'Carisma de pacificação, Louvor do Ressuscitado que passou pela Cruz.',
     logoUrl: 'https://iili.io/B51WMLF.jpg',
-  },
-  [CatholicMovement.VINCENTINOS]: {
-    name: 'Vicentinos',
-    fullName: 'Sociedade de São Vicente de Paulo',
-    iconName: 'Heart',
-    colorClass: 'bg-red-500',
-    borderClass: 'border-red-400',
-    textClass: 'text-red-600',
-    gradientClass: 'from-red-600 to-rose-600',
-    bannerUrl: 'https://images.unsplash.com/photo-1469571486117-4fd5b1110a78?auto=format&fit=crop&w=800&q=80', // Love/Caridade atmosphere
-    shortDesc: 'Evangelização e socorro aos pobres e marginalizados através da caridade material e espiritual.',
   },
   [CatholicMovement.CANCAO_NOVA]: {
     name: 'Canção Nova',
@@ -95,11 +73,11 @@ export const MOVEMENT_DATA: Record<CatholicMovement, MovementStyle> = {
     borderClass: 'border-violet-400',
     textClass: 'text-violet-600',
     gradientClass: 'from-violet-600 to-fuchsia-600',
-    bannerUrl: 'https://images.unsplash.com/photo-1438232992991-995b7058bbb3?auto=format&fit=crop&w=800&q=80', // Church architecture/Liturgy sanctity
+    bannerUrl: 'https://imgs.search.brave.com/bDfE-prwoOwjCsxrCwMC2SyfETBp-SaL0ffoj5N7HqE/rs:fit:860:0:0:0/g:ce/aHR0cHM6Ly9kaW9j/ZXNlc2Eub3JnLmJy/L3dwLWNvbnRlbnQv/dXBsb2Fkcy8yMDI0/LzA3L1Bhcm9xdWlh/LVNhbnRhLVJpdGEt/ZGUtQ2Fzc2lhLVNB/LUMud2VicA', // Church architecture/Liturgy sanctity
     shortDesc: 'Atividades pastorais paroquiais, sacramentos ordinários e solenidades litúrgicas.',
   },
   [CatholicMovement.EJC]: {
-    name: 'EJC',
+    name: 'EJC Santa Maria',
     fullName: 'Encontro de Jovens com Cristo',
     iconName: 'Compass',
     colorClass: 'bg-rose-550',

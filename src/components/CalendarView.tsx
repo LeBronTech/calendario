@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Plus, Copy } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Plus, Copy, Search, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Mission, CatholicMovement } from '../types';
 import { getMovementStyle, isMissionOnDate } from '../utils/catholicData';
@@ -12,6 +12,8 @@ import { getMovementStyle, isMissionOnDate } from '../utils/catholicData';
 interface CalendarViewProps {
   missions: Mission[];
   currentDate: Date;
+  searchTerm?: string;
+  setSearchTerm?: (term: string) => void;
   setCurrentDate: (date: Date) => void;
   onSelectDay: (dateStr: string) => void;
   onSelectMission: (mission: Mission) => void;
@@ -136,6 +138,8 @@ function LogoStack({ dayMissions }: { dayMissions: Mission[] }) {
 export default function CalendarView({
   missions,
   currentDate,
+  searchTerm = '',
+  setSearchTerm,
   setCurrentDate,
   onSelectDay,
   onSelectMission,
@@ -143,12 +147,46 @@ export default function CalendarView({
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
 
+  // Filter all missions across ALL months when search is term >= 3 characters
+  const allMatchingMissions = (searchTerm && searchTerm.trim().length >= 3)
+    ? missions.filter((m) => 
+        m.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
+        m.description?.toLowerCase().includes(searchTerm.toLowerCase())
+      )
+    : [];
+
+  const sortedMatchingMissions = [...allMatchingMissions].sort((a, b) => a.dateStr.localeCompare(b.dateStr));
+
+  const getDayOfWeekPT = (dateStr: string) => {
+    try {
+      const d = new Date(dateStr + "T00:00:00");
+      const day = d.getDay();
+      const days = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+      return days[day];
+    } catch {
+      return '';
+    }
+  };
+
+  const formatDatePT = (dateStr: string) => {
+    const parts = dateStr.split('-');
+    if (parts.length !== 3) return dateStr;
+    const MONTHS_SHORT = [
+      'Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun',
+      'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'
+    ];
+    const dStr = parts[2];
+    const mIdx = parseInt(parts[1], 10) - 1;
+    return `${dStr} de ${MONTHS_SHORT[mIdx]}, ${parts[0]}`;
+  };
+
   const [touchStart, setTouchStart] = useState<number | null>(null);
   const [touchEnd, setTouchEnd] = useState<number | null>(null);
   const [touchStartY, setTouchStartY] = useState<number | null>(null);
   const [touchEndY, setTouchEndY] = useState<number | null>(null);
   const [direction, setDirection] = useState(0);
 
+  const [isSearchActive, setIsSearchActive] = useState(!!searchTerm);
   const [activeSplashMonth, setActiveSplashMonth] = useState<string | null>(null);
   const isFirstRender = React.useRef(true);
 
@@ -293,21 +331,127 @@ export default function CalendarView({
         </div>
 
         <div className="flex items-center gap-2 w-full sm:w-auto">
-          <button
-            onClick={handleToday}
-            className="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-purple-50 hover:bg-purple-100 text-purple-800 border border-purple-200 transition"
-          >
-            Mês de Hoje
-          </button>
-          
-          <button
-            onClick={handleCopyMonth}
-            className="p-1.5 ml-1 rounded-md bg-purple-50 hover:bg-purple-100 text-purple-600 border border-purple-200 transition"
-            title="Copiar texto puro dos eventos deste mês"
-          >
-            <Copy className="w-4 h-4" />
-          </button>
+          {isSearchActive ? (
+            <div className="flex flex-col relative w-full sm:w-72">
+              <div className="flex items-center w-full animate-in fade-in slide-in-from-top-1 bg-white border border-purple-200 rounded-xl shadow-sm focus-within:ring-2 focus-within:ring-purple-100 p-1">
+                <Search className="w-4 h-4 text-purple-400 ml-1.5" />
+                <input
+                  type="text"
+                  placeholder="Pesquisar em todos os meses..."
+                  autoFocus
+                  className="w-full text-xs bg-transparent px-2 py-1.5 outline-none text-purple-900 placeholder:text-purple-300"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm?.(e.target.value)}
+                />
+                <button
+                  onClick={() => {
+                    setIsSearchActive(false);
+                    setSearchTerm?.('');
+                  }}
+                  className="p-1.5 rounded-full hover:bg-purple-100 text-purple-600 transition"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+              {searchTerm && searchTerm.trim().length > 0 && searchTerm.trim().length < 3 && (
+                <div className="absolute top-11 left-0 right-0 z-50 bg-purple-50 text-purple-800 text-[10px] py-1 px-2.5 rounded-lg border border-purple-150 shadow-md animate-in fade-in slide-in-from-top-1 text-center font-medium">
+                  Digite pelo menos 3 algarismos/letras...
+                </div>
+              )}
+              {searchTerm && searchTerm.trim().length >= 3 && (
+                <div className="absolute top-12 left-0 right-0 z-50 bg-white rounded-xl border border-purple-100 shadow-xl max-h-72 overflow-y-auto p-1.5 animate-in fade-in slide-in-from-top-2 w-full sm:w-80 -right-2 sm:right-0">
+                  <div className="px-2.5 py-1.5 text-[10px] font-bold text-purple-400 border-b border-purple-50 pb-1 mb-1 uppercase tracking-wider flex justify-between items-center">
+                    <span>Resultados ({sortedMatchingMissions.length})</span>
+                    <span className="text-[9px] text-purple-300 normal-case font-normal">Todos os meses</span>
+                  </div>
+                  {sortedMatchingMissions.length === 0 ? (
+                    <div className="p-4 text-center text-xs text-purple-400 font-medium">
+                      Nenhuma missão encontrada
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-1">
+                      {sortedMatchingMissions.map((m) => {
+                        const style = getMovementStyle(m.movement);
+                        const weekday = getDayOfWeekPT(m.dateStr);
+                        const formattedDateStr = formatDatePT(m.dateStr);
 
+                        return (
+                          <button
+                            key={m.id}
+                            onClick={() => {
+                              const parts = m.dateStr.split('-');
+                              if (parts.length === 3) {
+                                const y = parseInt(parts[0], 10);
+                                const mIdx = parseInt(parts[1], 10) - 1;
+                                // Navigate to the correct month and year
+                                setCurrentDate(new Date(y, mIdx, 1));
+                                // Highlight cell & Open detail modals
+                                onSelectDay(m.dateStr);
+                                if (onSelectMission) {
+                                  onSelectMission(m);
+                                }
+                              }
+                            }}
+                            className="flex items-start gap-2.5 p-2 rounded-lg text-left hover:bg-purple-50/70 hover:text-purple-950 transition outline-none group border border-transparent hover:border-purple-100"
+                          >
+                            <div className="w-4 h-4 shrink-0 flex items-center justify-center mt-0.5">
+                              {m.movementLogoUrl || style?.logoUrl ? (
+                                <img
+                                  src={m.movementLogoUrl || style?.logoUrl}
+                                  alt=""
+                                  className="w-3.5 h-3.5 rounded-full object-cover"
+                                  referrerPolicy="no-referrer"
+                                />
+                              ) : (
+                                <div className={`w-2.5 h-2.5 rounded-full ${m.cardColor || style?.colorClass || 'bg-purple-500'}`} />
+                              )}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="text-xs font-semibold text-purple-900 group-hover:text-purple-950 line-clamp-1">
+                                {m.title}
+                              </div>
+                              <div className="text-[10px] text-purple-400 font-medium flex justify-between items-center mt-0.5">
+                                <span>{formattedDateStr}</span>
+                                <span className="bg-purple-50 text-purple-600 px-1 py-0.2 rounded text-[9px] group-hover:bg-purple-100">
+                                  {weekday}
+                                </span>
+                              </div>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ) : (
+            <>
+              <button
+                onClick={handleToday}
+                className="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-purple-50 hover:bg-purple-100 text-purple-800 border border-purple-200 transition"
+              >
+                Mês de Hoje
+              </button>
+              
+              <button
+                onClick={handleCopyMonth}
+                className="p-1.5 ml-1 rounded-md bg-purple-50 hover:bg-purple-100 text-purple-600 border border-purple-200 transition"
+                title="Copiar texto puro dos eventos deste mês"
+              >
+                <Copy className="w-4 h-4" />
+              </button>
+
+              <button
+                onClick={() => setIsSearchActive(true)}
+                className="p-1.5 ml-1 rounded-md bg-purple-50 hover:bg-purple-100 text-purple-600 border border-purple-200 transition"
+                title="Pesquisar datas"
+              >
+                <Search className="w-4 h-4" />
+              </button>
+            </>
+          )} 
+          
           <div className="flex bg-[#F5EEFD] p-0.5 rounded-lg border border-purple-150 ml-auto sm:ml-2">
             <button
               onClick={handlePrevMonth}
@@ -377,7 +521,13 @@ export default function CalendarView({
               }
 
               const dateStr = formatDateString(day);
-              const dayMissions = missions.filter((m) => isMissionOnDate(m, dateStr));
+              const filteredMissions = (searchTerm && searchTerm.trim().length >= 3)
+                ? missions.filter((m) => 
+                    m.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                    m.description?.toLowerCase().includes(searchTerm.toLowerCase())
+                  )
+                : missions;
+              const dayMissions = filteredMissions.filter((m) => isMissionOnDate(m, dateStr));
               const dayIsToday = isToday(day);
 
               const multiDayMissions = dayMissions.filter((m) => m.endDateStr && m.endDateStr !== m.dateStr);
@@ -387,7 +537,7 @@ export default function CalendarView({
                 <div
                   key={`day-${day}`}
                   onClick={() => onSelectDay(dateStr)}
-                  className={`w-full h-24 md:h-28 pb-7.5 p-2 flex flex-col justify-between rounded-xl border transition cursor-pointer relative group ${
+                  className={`w-full h-20 md:h-24 pb-7 p-2 flex flex-col justify-between rounded-xl border transition cursor-pointer relative group ${
                     dayIsToday
                       ? 'bg-purple-50/80 border-purple-400 ring-2 ring-purple-150 ring-offset-1'
                       : 'bg-white hover:bg-purple-50/30 border-purple-105'

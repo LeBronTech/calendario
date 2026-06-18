@@ -13,12 +13,14 @@ interface WarningCarouselProps {
   missions: Mission[];
   currentSimulatedDate: Date; // standard is June 6, 2026
   onSelectMission: (mission: Mission) => void;
+  isCompact?: boolean;
 }
 
 export default function WarningCarousel({
   missions,
   currentSimulatedDate,
   onSelectMission,
+  isCompact = false,
 }: WarningCarouselProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selectedDetailMission, setSelectedDetailMission] = useState<Mission | null>(null);
@@ -66,17 +68,18 @@ export default function WarningCarousel({
     if (carouselEvents.length <= 1) return;
 
     const interval = setInterval(() => {
-      // Pause slideshow if user is hovering, modal is open, or it hasn't been 4s of complete inactivity
+      // Pause slideshow if user is hovering, modal is open
       if (isHovered || selectedDetailMission !== null) {
         setLastActivity(Date.now());
         return;
       }
 
       const elapsed = Date.now() - lastActivity;
-      if (elapsed >= 4000) {
+      // Resume only after 5s of inactivity and scroll every 3s
+      if (elapsed >= 5000 && elapsed % 3000 < 1000) {
         setCurrentIndex((prev) => (prev + 1) % carouselEvents.length);
       }
-    }, 1000); // Check every second for excellent reactivity
+    }, 1000); // Check every second for reactivity
 
     return () => clearInterval(interval);
   }, [carouselEvents.length, lastActivity, isHovered, selectedDetailMission]);
@@ -88,7 +91,7 @@ export default function WarningCarousel({
     ];
     const currentMonthName = monthNames[currentSimulatedDate.getMonth()];
     return (
-      <div className="bg-purple-50 p-4.5 rounded-2xl border border-purple-100 flex items-center justify-between text-purple-900 font-bold">
+      <div className="bg-purple-50 p-4.5 rounded-2xl border border-purple-100 flex items-center justify-between text-purple-900 font-bold h-[120px] sm:h-[130px] max-w-sm mx-auto w-full">
         <div className="flex items-center gap-2">
           <Sparkles className="w-5 h-5 text-purple-600 animate-pulse" />
           <span className="text-xs font-sans">
@@ -147,7 +150,7 @@ export default function WarningCarousel({
           setIsHovered(false);
           resetInactivity();
         }}
-        className="relative h-[240px] sm:h-[280px] w-full rounded-2xl overflow-hidden bg-purple-950 border border-purple-200 shadow-3xs flex flex-col justify-end group transition-all duration-300"
+        className={`relative ${isCompact ? 'h-[120px] sm:h-[130px] max-w-sm mx-auto' : 'h-[240px] sm:h-[280px]'} w-full rounded-2xl overflow-hidden bg-white border border-purple-100 shadow-3xs flex flex-col justify-end group transition-all duration-300`}
       >
         {/* Slide Content rendering */}
         {carouselEvents.map((event, idx) => {
@@ -166,6 +169,7 @@ export default function WarningCarousel({
           return (
             <motion.div
               key={event.id}
+              /* ... (keep drag/tap logic) ... */
               drag="x"
               dragConstraints={{ left: 0, right: 0 }}
               dragElastic={0.6}
@@ -196,71 +200,46 @@ export default function WarningCarousel({
                   setSelectedDetailMission(event);
                 }
               }}
-              className={`absolute inset-0 transition-all duration-700 ease-in-out flex flex-col justify-end p-4 sm:p-5 select-none ${
+              className={`absolute inset-0 transition-all duration-700 ease-in-out flex ${isCompact ? 'flex-row items-center p-3' : 'flex-col justify-end p-4 sm:p-5'} select-none ${
                 isCurrent ? 'opacity-100 z-10 scale-100 cursor-grab active:cursor-grabbing' : 'opacity-0 z-0 scale-95 pointer-events-none'
               }`}
             >
-              {/* Background cover image with gradient overlay */}
-              <div
-                className="absolute inset-0 bg-cover bg-center select-none bg-no-repeat pointer-events-none"
-                style={{ backgroundImage: `url("${bgImage}")` }}
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-purple-950 via-purple-900/75 to-transparent pointer-events-none" />
-
-              {/* Top-right movement logo overlay / indicator */}
-              <div className="absolute top-3 right-3 z-20 flex items-center gap-1.5 bg-white/95 px-2.5 py-1 rounded-xl shadow border border-purple-100 font-sans pointer-events-none">
-                {mStyle?.logoUrl ? (
-                  <img
-                    src={mStyle.logoUrl}
-                    alt="Logo"
-                    className="w-4 h-4 rounded-full object-cover"
-                    referrerPolicy="no-referrer"
+              {/* Background cover image or Circle image */}
+              {isCompact ? (
+                  <div className="w-16 h-16 rounded-full overflow-hidden shrink-0 border-2 border-purple-100">
+                    <img src={bgImage} alt="Event" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                  </div>
+              ) : (
+                <>
+                  <div
+                    className="absolute inset-0 bg-cover bg-center select-none bg-no-repeat pointer-events-none"
+                    style={{ backgroundImage: `url("${bgImage}")` }}
                   />
-                ) : (
-                  <span className="text-xs">⛪</span>
-                )}
-                <span className="text-[10px] font-black uppercase text-purple-900">
-                  {mStyle?.name || event.movement}
-                </span>
-              </div>
+                  <div className="absolute inset-0 bg-gradient-to-t from-purple-950 via-purple-900/75 to-transparent pointer-events-none" />
+                </>
+              )}
 
               {/* Overlaid Event Details inside slide */}
-              <div className="relative z-10 space-y-1.5 font-semibold pointer-events-none">
+              <div className={`relative z-10 space-y-1.5 font-semibold pointer-events-none ${isCompact ? 'pl-3' : ''}`}>
                 <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="text-[9px] bg-purple-700 text-white font-black uppercase px-2 py-0.5 rounded shadow-sm font-sans">
+                  <span className={`text-[9px] ${isCompact ? 'bg-purple-100 text-purple-900' : 'bg-purple-700 text-white'} font-black uppercase px-2 py-0.5 rounded shadow-sm font-sans`}>
                     📅 {getEventDateSpan(event)}
                   </span>
                   {event.startTime && (
-                    <span className="text-[9px] bg-white/20 text-white font-bold backdrop-blur-xs px-2 py-0.5 rounded font-sans">
-                      ⏱️ {event.startTime} {event.endTime ? `às ${event.endTime}` : ''}
-                    </span>
-                  )}
-                  {event.location && (
-                    <span className="text-[9px] bg-white/25 text-white font-black uppercase backdrop-blur-xs px-2 py-0.5 rounded font-sans">
-                      📍 {event.location}
+                    <span className={`text-[9px] ${isCompact ? 'bg-purple-50 text-purple-700' : 'bg-white/20 text-white'} font-bold ${isCompact ? '' : 'backdrop-blur-xs'} px-2 py-0.5 rounded font-sans`}>
+                      ⏱️ {event.startTime}
                     </span>
                   )}
                 </div>
 
-                <h4 className="text-sm sm:text-base font-black text-white leading-tight drop-shadow-sm font-sans">
+                <h4 className={`text-sm ${isCompact ? 'text-purple-950' : 'text-white'} font-black leading-tight drop-shadow-sm font-sans`}>
                   {event.title}
                 </h4>
 
-                <p className="text-[10px] sm:text-xs text-purple-100/95 leading-snug line-clamp-2 max-w-2xl drop-shadow-xs font-semibold">
-                  {event.description}
-                </p>
-
-                {event.roles && event.roles.length > 0 && (
-                  <div className="flex flex-wrap gap-1 pt-1">
-                    <span className="text-[9px] uppercase font-black tracking-widest text-white/70 block mt-0.5 mr-1 font-sans">
-                      Minha Ação:
-                    </span>
-                    {event.roles.map((r) => (
-                      <span key={r} className="text-[9px] font-black bg-white/20 text-white rounded-full px-2 py-0.5 tracking-wider uppercase border border-white/10 font-sans">
-                        {r}
-                      </span>
-                    ))}
-                  </div>
+                {!isCompact && (
+                  <p className="text-[10px] sm:text-xs text-purple-100/95 leading-snug line-clamp-2 max-w-2xl drop-shadow-xs font-semibold">
+                    {event.description}
+                  </p>
                 )}
               </div>
             </motion.div>

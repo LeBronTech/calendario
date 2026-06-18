@@ -530,6 +530,7 @@ export default function App() {
   
   // Mobile and view optimization states
   const [selectedDay, setSelectedDay] = useState<string>('2026-06-06');
+  const [searchTerm, setSearchTerm] = useState<string>('');
   const [currentMainSection, setCurrentMainSection] = useState<'personal' | 'retrospective' | 'catalog'>('personal');
   const [customMovementsVersion, setCustomMovementsVersion] = useState(0);
   
@@ -876,6 +877,13 @@ export default function App() {
       localStorage.setItem('added_preceito_events_2026_v9', 'true');
     }
   }, [missions, user]);
+
+  const filteredMissions = (searchTerm && searchTerm.trim().length >= 3)
+      ? missions.filter(m => 
+          m.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
+          m.description?.toLowerCase().includes(searchTerm.toLowerCase())
+        )
+      : missions;
 
   // Save cache with local Storage of the browser
   const saveMissionsState = (updated: Mission[]) => {
@@ -2741,8 +2749,9 @@ export default function App() {
           {/* Styled Event Carrossel Warn Banner */}
           <div className="max-w-7xl w-full mx-auto px-4 md:px-6 mt-4">
             <WarningCarousel
-              missions={missions}
+              missions={filteredMissions}
               currentSimulatedDate={currentDate}
+              isCompact={true}
               onSelectMission={(m) => {
                 setSelectedDay(m.dateStr);
                 setIsDayModalOpen(true);
@@ -2757,6 +2766,8 @@ export default function App() {
               missions={missions}
               currentDate={currentDate}
               setCurrentDate={setCurrentDate}
+              searchTerm={searchTerm}
+              setSearchTerm={setSearchTerm}
               onSelectDay={(day) => {
                 setSelectedDay(day);
                 setIsDayModalOpen(true);
