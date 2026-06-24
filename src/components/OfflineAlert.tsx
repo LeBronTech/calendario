@@ -52,5 +52,20 @@ export default function OfflineAlert({
 
   const currentOnlineStatus = isOnline && !isSimulatedOffline;
 
-  return null;
+  return (
+    <div className={`fixed bottom-4 right-4 z-50 flex items-center gap-2 px-4 py-2 rounded-full shadow-lg ${currentOnlineStatus ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}`}>
+      {currentOnlineStatus ? <Wifi className="w-4 h-4" /> : <WifiOff className="w-4 h-4" />}
+      <span className="text-xs font-semibold">
+        {currentOnlineStatus ? 'Online' : 'Offline'}
+      </span>
+      {!currentOnlineStatus && pendingCount > 0 && (
+        <span className="text-[10px] ml-1">({pendingCount} pendentes)</span>
+      )}
+      {currentOnlineStatus && pendingCount > 0 && (
+        <button onClick={handleSyncClick} className="ml-2 hover:text-green-900" disabled={syncing}>
+           <RefreshCw className={`w-3 h-3 ${syncing ? 'animate-spin' : ''}`} />
+        </button>
+      )}
+    </div>
+  );
 }
