@@ -20,7 +20,7 @@ import firebaseConfig from '../../firebase-applet-config.json';
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId || '(default)');
+export const db = getFirestore(app);
 
 // Enable Firestore offline persistence
 enableIndexedDbPersistence(db).catch((err) => {
