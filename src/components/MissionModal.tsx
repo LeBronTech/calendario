@@ -478,7 +478,7 @@ export default function MissionModal({
       description: description.trim(),
       instagramUrl: instagramUrl.trim(),
       instagramImgUrl: instagramImgUrl || undefined,
-      movementLogoUrl: useCustomMovement && movementLogoUrl ? movementLogoUrl : undefined,
+      movementLogoUrl: movementLogoUrl || undefined,
       tipo: tipo || undefined,
       roles: selectedRoles,
       observation: observation.trim(),
