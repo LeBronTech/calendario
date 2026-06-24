@@ -31,6 +31,30 @@ export const MOVEMENT_DATA: Record<CatholicMovement, MovementStyle> = {
     shortDesc: 'Cultura de Pentecostes, grupos de oração carismáticos e efusão do Espírito Santo.',
     logoUrl: 'https://iili.io/B5Mh5Tx.jpg',
   },
+  [CatholicMovement.EJNS]: {
+    name: 'EJNS',
+    fullName: 'Equipes de Jovens de Nossa Senhora',
+    iconName: 'Heart',
+    colorClass: 'bg-blue-600',
+    borderClass: 'border-blue-400',
+    textClass: 'text-blue-600',
+    gradientClass: 'from-blue-600 to-indigo-600',
+    bannerUrl: 'https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?auto=format&fit=crop&w=800&q=80',
+    shortDesc: 'Movimento de espiritualidade mariana para jovens, focado na oração e na santidade.',
+    logoUrl: 'https://iili.io/CfNgHib.png'
+  },
+  [CatholicMovement.VINCENTINOS]: {
+    name: 'Vicentinos',
+    fullName: 'Sociedade de São Vicente de Paulo',
+    iconName: 'Gift',
+    colorClass: 'bg-teal-650',
+    borderClass: 'border-teal-400',
+    textClass: 'text-teal-600',
+    gradientClass: 'from-teal-600 to-emerald-700',
+    bannerUrl: 'https://images.unsplash.com/photo-1518156677180-95a2893f3e9f?auto=format&fit=crop&w=800&q=80',
+    shortDesc: 'Serviço de caridade e assistência às famílias carentes e aos mais necessitados.',
+    logoUrl: 'https://iili.io/CfNgHib.png'
+  },
   [CatholicMovement.SHALOM]: {
     name: 'Shalom',
     fullName: 'Comunidade Católica Shalom',
@@ -238,5 +262,188 @@ export function isMissionOnDate(mission: Mission, dateStr: string): boolean {
   const effectiveEndDate = getEffectiveEndDate(mission);
   return dateStr >= mission.dateStr && dateStr <= effectiveEndDate;
 }
+
+/**
+ * Self-healing scanner that automatically identifies legacy oversized base64 images
+ * (e.g. uploaded from phone without compression) and downscales them to prevent Firestore failures.
+ */
+export function sanitizeExistingCustomMovements() {
+  if (typeof window === 'undefined' || !window.localStorage) return;
+  
+  try {
+    const savedCustom = localStorage.getItem('saved_custom_catholic_movements');
+    if (!savedCustom) return;
+    
+    const customObj = JSON.parse(savedCustom);
+    let changed = false;
+    
+    const promises = Object.entries(customObj).map(([name, info]: [string, any]) => {
+      if (info && info.logoUrl && info.logoUrl.startsWith('data:image/') && info.logoUrl.length > 50000) {
+        return new Promise<void>((resolve) => {
+          const img = new Image();
+          img.onload = () => {
+            try {
+              const canvas = document.createElement('canvas');
+              const maxWidth = 150;
+              const maxHeight = 150;
+              let width = img.width;
+              let height = img.height;
+              
+              if (width > height) {
+                if (width > maxWidth) {
+                  height = Math.round((height * maxWidth) / width);
+                  width = maxWidth;
+                }
+              } else {
+                if (height > maxHeight) {
+                  width = Math.round((width * maxHeight) / height);
+                  height = maxHeight;
+                }
+              }
+              
+              canvas.width = width;
+              canvas.height = height;
+              const ctx = canvas.getContext('2d');
+              if (ctx) {
+                ctx.drawImage(img, 0, 0, width, height);
+                const compressed = canvas.toDataURL('image/jpeg', 0.6);
+                if (compressed.length < info.logoUrl.length) {
+                  customObj[name].logoUrl = compressed;
+                  changed = true;
+                  console.log(`[Self-Healing] Optimized logo for custom movement "${name}" from ${info.logoUrl.length} to ${compressed.length} characters.`);
+                }
+              }
+            } catch (err) {
+              console.warn('Error compressing legacy logo', err);
+            }
+            resolve();
+          };
+          img.onerror = () => resolve();
+          img.src = info.logoUrl;
+        });
+      }
+      return Promise.resolve();
+    });
+    
+    Promise.all(promises).then(() => {
+      if (changed) {
+        localStorage.setItem('saved_custom_catholic_movements', JSON.stringify(customObj));
+        window.dispatchEvent(new Event('customMovementsChanged'));
+      }
+    });
+  } catch (err) {
+    console.error('Error running custom movements self-healing scanner:', err);
+  }
+}
+
+/**
+ * Self-healing scanner that automatically identifies local mission events with oversized base64
+ * logos and compresses them so that they can be safely synchronized to Firestore.
+ */
+export function sanitizeExistingMissions(onComplete?: (updatedMissions: Mission[]) => void) {
+  if (typeof window === 'undefined' || !window.localStorage) return;
+  
+  try {
+    const localDb = localStorage.getItem('missions_db_maria');
+    if (!localDb) return;
+    
+    const parsedMissions: Mission[] = JSON.parse(localDb);
+    if (!Array.isArray(parsedMissions)) return;
+    
+    let changed = false;
+    
+    const promises = parsedMissions.map((m) => {
+      const needsLogoCompression = m.movementLogoUrl && m.movementLogoUrl.startsWith('data:image/') && m.movementLogoUrl.length > 50000;
+      const needsInstaCompression = m.instagramImgUrl && m.instagramImgUrl.startsWith('data:image/') && m.instagramImgUrl.length > 150000;
+      
+      if (needsLogoCompression || needsInstaCompression) {
+        return new Promise<void>((resolve) => {
+          // Sequential resolution of oversized images in a single mission
+          const processImages = async () => {
+            if (needsLogoCompression && m.movementLogoUrl) {
+              await new Promise<void>((resLogo) => {
+                const img = new Image();
+                img.onload = () => {
+                  const canvas = document.createElement('canvas');
+                  const maxWidth = 150;
+                  const maxHeight = 150;
+                  let width = img.width;
+                  let height = img.height;
+                  if (width > height) {
+                    if (width > maxWidth) { height = Math.round((height * maxWidth) / width); width = maxWidth; }
+                  } else {
+                    if (height > maxHeight) { width = Math.round((width * maxHeight) / height); height = maxHeight; }
+                  }
+                  canvas.width = width;
+                  canvas.height = height;
+                  const ctx = canvas.getContext('2d');
+                  if (ctx) {
+                    ctx.drawImage(img, 0, 0, width, height);
+                    const compressed = canvas.toDataURL('image/jpeg', 0.6);
+                    if (compressed.length < m.movementLogoUrl!.length) {
+                      m.movementLogoUrl = compressed;
+                      changed = true;
+                    }
+                  }
+                  resLogo();
+                };
+                img.onerror = () => resLogo();
+                img.src = m.movementLogoUrl!;
+              });
+            }
+            
+            if (needsInstaCompression && m.instagramImgUrl) {
+              await new Promise<void>((resInsta) => {
+                const img = new Image();
+                img.onload = () => {
+                  const canvas = document.createElement('canvas');
+                  const maxWidth = 500;
+                  const maxHeight = 500;
+                  let width = img.width;
+                  let height = img.height;
+                  if (width > height) {
+                    if (width > maxWidth) { height = Math.round((height * maxWidth) / width); width = maxWidth; }
+                  } else {
+                    if (height > maxHeight) { width = Math.round((width * maxHeight) / height); height = maxHeight; }
+                  }
+                  canvas.width = width;
+                  canvas.height = height;
+                  const ctx = canvas.getContext('2d');
+                  if (ctx) {
+                    ctx.drawImage(img, 0, 0, width, height);
+                    const compressed = canvas.toDataURL('image/jpeg', 0.6);
+                    if (compressed.length < m.instagramImgUrl!.length) {
+                      m.instagramImgUrl = compressed;
+                      changed = true;
+                    }
+                  }
+                  resInsta();
+                };
+                img.onerror = () => resInsta();
+                img.src = m.instagramImgUrl!;
+              });
+            }
+          };
+          
+          processImages().then(() => resolve());
+        });
+      }
+      return Promise.resolve();
+    });
+    
+    Promise.all(promises).then(() => {
+      if (changed) {
+        localStorage.setItem('missions_db_maria', JSON.stringify(parsedMissions));
+        console.log('[Self-Healing] Successfully sanitized and compressed oversized images in event logs.');
+        if (onComplete) {
+          onComplete(parsedMissions);
+        }
+      }
+    });
+  } catch (err) {
+    console.error('Error running missions self-healing scanner:', err);
+  }
+}
+
 
 

@@ -21,7 +21,7 @@ import {
   Save
 } from 'lucide-react';
 import { CatholicMovement, Mission } from './types';
-import { MOVEMENT_DATA, getMovementStyle } from './utils/catholicData';
+import { MOVEMENT_DATA, getMovementStyle, sanitizeExistingCustomMovements, sanitizeExistingMissions } from './utils/catholicData';
 
 // Component Imports
 import OfflineAlert from './components/OfflineAlert';
@@ -643,6 +643,16 @@ export default function App() {
 
     localStorage.setItem('missions_db_maria', JSON.stringify(loadedMissions));
     setMissions(loadedMissions);
+
+    // Run self-healing scanners to fix legacy oversized images causing Firestore sync blocks
+    try {
+      sanitizeExistingCustomMovements();
+      sanitizeExistingMissions((updated) => {
+        setMissions(updated);
+      });
+    } catch (e) {
+      console.warn('Error running self-healing image scanners on startup:', e);
+    }
 
     // Initialize Auth listener
     initAuth(

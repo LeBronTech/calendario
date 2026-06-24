@@ -306,20 +306,57 @@ export default function MissionModal({
     );
   };
 
+  const resizeImage = (file: File, maxWidth: number, maxHeight: number, callback: (base64: string) => void) => {
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > maxWidth) {
+            height = Math.round((height * maxWidth) / width);
+            width = maxWidth;
+          }
+        } else {
+          if (height > maxHeight) {
+            width = Math.round((width * maxHeight) / height);
+            height = maxHeight;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          const compressedBase64 = canvas.toDataURL('image/jpeg', 0.7);
+          callback(compressedBase64);
+        } else {
+          callback(event.target?.result as string);
+        }
+      };
+      img.src = event.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>, targetType: 'logo' | 'instagram') => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const base64 = reader.result as string;
+    const maxWidth = targetType === 'logo' ? 150 : 500;
+    const maxHeight = targetType === 'logo' ? 150 : 500;
+
+    resizeImage(file, maxWidth, maxHeight, (compressedBase64) => {
       if (targetType === 'logo') {
-        setMovementLogoUrl(base64);
+        setMovementLogoUrl(compressedBase64);
       } else {
-        setInstagramImgUrl(base64);
+        setInstagramImgUrl(compressedBase64);
       }
-    };
-    reader.readAsDataURL(file);
+    });
   };
 
   const handleMovementSelectChange = (val: string) => {
