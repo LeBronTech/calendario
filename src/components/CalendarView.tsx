@@ -35,7 +35,7 @@ function LogoStack({ dayMissions }: { dayMissions: Mission[] }) {
   const [offset, setOffset] = useState(0);
 
   useEffect(() => {
-    if (dayMissions.length <= 2) return;
+    if (dayMissions.length < 2) return;
     const interval = setInterval(() => {
       setOffset((prev) => (prev + 1) % dayMissions.length);
     }, 2000); // cycle through missions every 2s
@@ -44,20 +44,21 @@ function LogoStack({ dayMissions }: { dayMissions: Mission[] }) {
 
   if (dayMissions.length === 0) return null;
 
-  // Statically stacked vertically if <= 2 missions to keep things neat and fast
-  if (dayMissions.length <= 2) {
+  // Statically stacked vertically if <= 1 mission to keep things neat and fast
+  if (dayMissions.length <= 1) {
     return (
       <div className="flex flex-col -space-y-1.5 md:-space-y-2 justify-center items-center select-none py-0.5">
         {dayMissions.map((m, idx) => {
           const style = getMovementStyle(m.movement);
           const label = style?.name?.slice(0, 3) || '⛪';
           const logoImgUrl = m.movementLogoUrl || style?.logoUrl;
+          const isPreparing = m.status === 'preparing';
 
           if (logoImgUrl) {
             return (
               <div
                 key={m.id || idx}
-                className="w-5.5 h-5.5 md:w-7 md:h-7 rounded-full border border-purple-200/80 bg-white flex items-center justify-center shadow-xs overflow-hidden relative transition transform hover:scale-110"
+                className={`w-5.5 h-5.5 md:w-7 md:h-7 rounded-full border border-purple-200/80 bg-white flex items-center justify-center shadow-xs overflow-hidden relative transition transform hover:scale-110 ${isPreparing ? 'opacity-50' : ''}`}
                 title={m.title || m.movement}
                 style={{ zIndex: 10 - idx }}
               >
@@ -68,6 +69,11 @@ function LogoStack({ dayMissions }: { dayMissions: Mission[] }) {
                   referrerPolicy="no-referrer"
                   loading="lazy"
                 />
+                {isPreparing && (
+                  <div className="absolute inset-0 bg-purple-950/20 flex items-center justify-center">
+                    <span className="text-purple-900 font-sans font-black text-[11px] md:text-sm drop-shadow-sm">?</span>
+                  </div>
+                )}
               </div>
             );
           }
@@ -75,11 +81,16 @@ function LogoStack({ dayMissions }: { dayMissions: Mission[] }) {
           return (
             <div
               key={m.id || idx}
-              className={`w-5.5 h-5.5 md:w-7 md:h-7 rounded-full border ${style?.borderClass || 'border-purple-300'} ${m.cardColor || style?.colorClass || 'bg-purple-500'} text-white flex items-center justify-center font-black text-[7.5px] md:text-[9px] shadow-xs relative transition transform hover:scale-110`}
+              className={`w-5.5 h-5.5 md:w-7 md:h-7 rounded-full border ${style?.borderClass || 'border-purple-300'} ${m.cardColor || style?.colorClass || 'bg-purple-500'} text-white flex items-center justify-center font-black text-[7.5px] md:text-[9px] shadow-xs relative transition transform hover:scale-110 ${isPreparing ? 'opacity-50' : ''}`}
               title={m.title || style?.fullName}
               style={{ zIndex: 10 - idx }}
             >
               <span>{label}</span>
+              {isPreparing && (
+                <div className="absolute inset-0 bg-purple-950/30 rounded-full flex items-center justify-center">
+                  <span className="text-white font-sans font-black text-[11px] md:text-sm drop-shadow-sm">?</span>
+                </div>
+              )}
             </div>
           );
         })}
@@ -87,7 +98,7 @@ function LogoStack({ dayMissions }: { dayMissions: Mission[] }) {
     );
   }
 
-  // If 3 or 4 (or more) missions, show first 2, then cycle sequentially with a beautiful vertical sliding transition
+  // If 2 or more missions, cycle sequentially with a beautiful vertical sliding transition
   const firstIndex = offset % dayMissions.length;
   const secondIndex = (offset + 1) % dayMissions.length;
   const itemsToShow = [dayMissions[firstIndex], dayMissions[secondIndex]];
@@ -99,19 +110,20 @@ function LogoStack({ dayMissions }: { dayMissions: Mission[] }) {
           const style = getMovementStyle(m.movement);
           const label = style?.name?.slice(0, 3) || '⛪';
           const logoImgUrl = m.movementLogoUrl || style?.logoUrl;
+          const isPreparing = m.status === 'preparing';
 
           return (
             <motion.div
               key={`${m.id || m.title}-${idx}`}
               initial={{ scale: 0.7, y: 10, opacity: 0 }}
-              animate={{ scale: 1, y: 0, opacity: 1 }}
+              animate={{ scale: 1, y: 0, opacity: isPreparing ? 0.5 : 1 }}
               exit={{ scale: 0.7, y: -10, opacity: 0 }}
               transition={{ duration: 0.35, ease: 'easeInOut' }}
-              className="w-5.5 h-5.5 md:w-7 md:h-7 shrink-0"
+              className="w-5.5 h-5.5 md:w-7 md:h-7 shrink-0 relative"
               style={{ zIndex: 10 - idx }}
             >
               {logoImgUrl ? (
-                <div className="w-full h-full rounded-full border border-purple-200/80 bg-white flex items-center justify-center shadow-xs overflow-hidden">
+                <div className="w-full h-full rounded-full border border-purple-200/80 bg-white flex items-center justify-center shadow-xs overflow-hidden relative">
                   <img
                     src={logoImgUrl}
                     alt={m.movement}
@@ -119,12 +131,22 @@ function LogoStack({ dayMissions }: { dayMissions: Mission[] }) {
                     referrerPolicy="no-referrer"
                     loading="lazy"
                   />
+                  {isPreparing && (
+                    <div className="absolute inset-0 bg-purple-950/20 flex items-center justify-center">
+                      <span className="text-purple-900 font-sans font-black text-[11px] md:text-sm drop-shadow-sm">?</span>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div
-                  className={`w-full h-full rounded-full border ${style?.borderClass || 'border-purple-300'} ${m.cardColor || style?.colorClass || 'bg-purple-500'} text-white flex items-center justify-center font-black text-[7.5px] md:text-[9px] shadow-xs`}
+                  className={`w-full h-full rounded-full border ${style?.borderClass || 'border-purple-300'} ${m.cardColor || style?.colorClass || 'bg-purple-500'} text-white flex items-center justify-center font-black text-[7.5px] md:text-[9px] shadow-xs relative`}
                 >
                   <span>{label}</span>
+                  {isPreparing && (
+                    <div className="absolute inset-0 bg-purple-950/35 rounded-full flex items-center justify-center">
+                      <span className="text-white font-sans font-black text-[11px] md:text-sm drop-shadow-sm">?</span>
+                    </div>
+                  )}
                 </div>
               )}
             </motion.div>

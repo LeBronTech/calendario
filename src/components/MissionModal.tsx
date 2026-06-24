@@ -244,7 +244,15 @@ export default function MissionModal({
       setTipo('');
       setSelectedRoles([]);
       setObservation('');
-      setStatus(initialDate ? 'preparing' : 'backlog');
+      
+      const today = new Date();
+      const yr = today.getFullYear();
+      const mo = String(today.getMonth() + 1).padStart(2, '0');
+      const dy = String(today.getDate()).padStart(2, '0');
+      const todayStr = `${yr}-${mo}-${dy}`;
+      const defaultStatus = initialDate && initialDate < todayStr ? 'completed' : 'confirmed';
+      setStatus(defaultStatus);
+      
       setDailySchedules([]);
       setRecurrenceFreq('none');
       setRecurrenceDays([]);
@@ -253,6 +261,30 @@ export default function MissionModal({
       setSelectedColorClass('bg-purple-600');
     }
   }, [editMission, initialDate, isOpen]);
+
+  // Auto-set status for NEW events based on date: past -> completed, future/today -> confirmed
+  useEffect(() => {
+    if (!editMission && isOpen) {
+      if (!dateStr) {
+        setStatus('confirmed');
+        return;
+      }
+      
+      const today = new Date();
+      const yr = today.getFullYear();
+      const mo = String(today.getMonth() + 1).padStart(2, '0');
+      const dy = String(today.getDate()).padStart(2, '0');
+      const todayStr = `${yr}-${mo}-${dy}`;
+      
+      const targetDate = endDateStr || dateStr;
+      
+      if (targetDate < todayStr) {
+        setStatus('completed');
+      } else {
+        setStatus('confirmed');
+      }
+    }
+  }, [dateStr, endDateStr, editMission, isOpen]);
 
   // Sync dailySchedules whenever dates or standard times change
   useEffect(() => {

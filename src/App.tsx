@@ -509,7 +509,61 @@ export const generatePreceitoEvents2026 = (): Mission[] => {
 };
 
 export default function App() {
-  const [missions, setMissions] = useState<Mission[]>([]);
+  const [missions, setMissionsRaw] = useState<Mission[]>([]);
+
+  const setMissions = (newMissions: Mission[] | ((prev: Mission[]) => Mission[])) => {
+    setMissionsRaw((prev) => {
+      const resolved = typeof newMissions === 'function' ? newMissions(prev) : newMissions;
+      
+      // Auto-update past missions to 'completed'
+      let changed = false;
+      const today = new Date();
+      const yr = today.getFullYear();
+      const mo = String(today.getMonth() + 1).padStart(2, '0');
+      const dy = String(today.getDate()).padStart(2, '0');
+      const todayStr = `${yr}-${mo}-${dy}`;
+
+      const updated = resolved.map(m => {
+        if (!m.dateStr) return m;
+
+        const targetDateStr = m.endDateStr || m.dateStr;
+        let past = false;
+        if (targetDateStr < todayStr) {
+          past = true;
+        } else if (targetDateStr === todayStr) {
+          const hr = String(today.getHours()).padStart(2, '0');
+          const mn = String(today.getMinutes()).padStart(2, '0');
+          const currentInt = hr + mn;
+          const tEndTime = m.endTime || '23:59';
+          const cleanEndTime = tEndTime.replace(':', '');
+          if (currentInt >= cleanEndTime) past = true;
+        }
+
+        if (past && m.status !== 'completed') {
+          changed = true;
+          return { ...m, status: 'completed' as const };
+        }
+        return m;
+      });
+
+      if (changed) {
+        // Save to local storage
+        localStorage.setItem('missions_db_maria', JSON.stringify(updated));
+        
+        // Safe side effect scheduling
+        if (user) {
+          setTimeout(() => {
+            updated.forEach(m => {
+              if (m.status === 'completed' && m.id) {
+                uploadMission(user.uid, m).catch(e => console.error('Auto status sync failed:', e));
+              }
+            });
+          }, 0);
+        }
+      }
+      return updated;
+    });
+  };
   const [syncPromptData, setSyncPromptData] = useState<{ cloudMissions: Mission[], cloudSettings?: any } | null>(null);
   const [cloudUploadPrompt, setCloudUploadPrompt] = useState<{ active: boolean, localCount: number, gCount: number } | null>(null);
   const [cloudUploadProgress, setCloudUploadProgress] = useState<{ current: number, total: number } | null>(null);
@@ -1021,6 +1075,41 @@ export default function App() {
           sessionStorage.removeItem('_g_connected');
           throw new Error('401_UNAUTHORIZED');
         }
+
+        // SELF-HEALING: If updating an event returns 404, the event was deleted on Google Calendar or inaccessible.
+        // We clear the stale googleEventId, fallback to a POST request to create a new one, and return its ID.
+        if (res.status === 404 && mission.googleEventId) {
+          console.warn(`Event ${mission.googleEventId} not found in Google Calendar. Self-healing by creating a new event...`);
+          const fallbackRes = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify(eventPayload)
+          });
+          
+          if (fallbackRes.ok) {
+            const fallbackData = await fallbackRes.json();
+            // Assign the new ID to the mission object
+            mission.googleEventId = fallbackData.id;
+            return fallbackData.id;
+          } else {
+            let fallbackDetails = '';
+            try {
+              const errData = await fallbackRes.json();
+              fallbackDetails = errData?.error?.message || JSON.stringify(errData);
+            } catch (_) {
+              try {
+                fallbackDetails = await fallbackRes.text();
+              } catch (__) {
+                fallbackDetails = fallbackRes.statusText || `Status ${fallbackRes.status}`;
+              }
+            }
+            throw new Error(`Google API (Status ${fallbackRes.status} on retry after 404): ${fallbackDetails}`);
+          }
+        }
+
         let details = '';
         try {
           const errData = await res.json();
@@ -1038,9 +1127,13 @@ export default function App() {
       const data = await res.json();
       return data.id || null;
     } catch (e: any) {
-      console.error('Erro ao empurrar evento ao Google Agenda:', e);
       if (e instanceof Error && e.message === '401_UNAUTHORIZED') {
+        console.warn('Sessão do Google Calendar expirou (401). Renovando...');
         throw e;
+      } else if (e instanceof Error && e.message.includes('Failed to fetch')) {
+        console.warn('Falha de conexão com o Google Calendar (Failed to fetch). O app tentará novamente mais tarde.');
+      } else {
+        console.error('Erro ao empurrar evento ao Google Agenda:', e);
       }
       return null;
     }
@@ -2204,7 +2297,7 @@ export default function App() {
               headers: { Authorization: `Bearer ${accessToken}` },
             });
           } catch (error) {
-            console.error(error);
+            console.warn('Erro ao deletar evento remoto do Google Agenda (pode ter sido excluído manualmente):', error);
           }
         }
       }
