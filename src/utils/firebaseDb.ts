@@ -27,13 +27,35 @@ export interface FirestoreErrorInfo {
   }
 }
 
+let firestoreQuotaExceeded = false;
+
+export function isFirestoreQuotaExceeded() {
+  return firestoreQuotaExceeded;
+}
+
+export function setFirestoreQuotaExceeded(val: boolean) {
+  if (firestoreQuotaExceeded !== val) {
+    firestoreQuotaExceeded = val;
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('firestoreQuotaStateChanged'));
+    }
+  }
+}
+
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errMsg = error instanceof Error ? error.message : String(error);
   const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
+    error: errMsg,
     authInfo: { userId: auth.currentUser?.uid, email: auth.currentUser?.email },
     operationType,
     path
   };
+  
+  const lowerMsg = errMsg.toLowerCase();
+  if (lowerMsg.includes('quota') || lowerMsg.includes('exhausted') || lowerMsg.includes('resource-exhausted') || lowerMsg.includes('resource_exhausted')) {
+    setFirestoreQuotaExceeded(true);
+  }
+  
   console.warn('Firestore Notification: ', JSON.stringify(errInfo));
 }
 
@@ -202,6 +224,7 @@ export async function downloadSettings(userId: string): Promise<any> {
 
 export async function uploadSettings(userId: string, settings: any): Promise<void> {
   const path = `users/${userId}`;
+  if (firestoreQuotaExceeded) return;
   try {
     const cleaned = JSON.parse(JSON.stringify(settings));
     await setDoc(doc(db, path), cleaned, { merge: true });
@@ -213,6 +236,7 @@ export async function uploadSettings(userId: string, settings: any): Promise<voi
 // Save/Update mission in Firestore
 export async function uploadMission(userId: string, mission: Mission): Promise<void> {
   const path = `users/${userId}/missions`;
+  if (firestoreQuotaExceeded) return;
   try {
     // Remove undefined fields to prevent Firestore errors
     const cleanedMission = JSON.parse(JSON.stringify(mission));
@@ -225,6 +249,7 @@ export async function uploadMission(userId: string, mission: Mission): Promise<v
 // Delete mission from Firestore
 export async function removeMission(userId: string, missionId: string): Promise<void> {
   const path = `users/${userId}/missions`;
+  if (firestoreQuotaExceeded) return;
   try {
     await deleteDoc(doc(db, path, missionId));
   } catch (error) {
@@ -251,6 +276,7 @@ export async function downloadCatholicEvents(userId: string): Promise<CatholicEv
 // Save/Update custom catholic event in Firestore
 export async function uploadCatholicEvent(userId: string, event: CatholicEvent): Promise<void> {
   const path = `users/${userId}/catholicEvents`;
+  if (firestoreQuotaExceeded) return;
   try {
     await setDoc(doc(db, path, event.id), event);
   } catch (error) {
@@ -261,6 +287,7 @@ export async function uploadCatholicEvent(userId: string, event: CatholicEvent):
 // Delete customized catholic event from Firestore
 export async function removeCatholicEvent(userId: string, eventId: string): Promise<void> {
   const path = `users/${userId}/catholicEvents`;
+  if (firestoreQuotaExceeded) return;
   try {
     await deleteDoc(doc(db, path, eventId));
   } catch (error) {

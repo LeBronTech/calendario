@@ -419,8 +419,8 @@ export const generatePreceitoEvents2026 = (): Mission[] => {
         title: 'Missa Dominical (Preceito)',
         movement: CatholicMovement.PAROQUIAL,
         dateStr: dStr,
-        startTime: '19:00',
-        endTime: '20:30',
+        startTime: '17:00',
+        endTime: '18:30',
         location: 'Igreja Matriz',
         description: 'Celebração da Santa Missa de preceito dominical. "Lembra-te de santificar o dia do Senhor".',
         status: isPast ? 'completed' : 'preparing',
@@ -549,17 +549,6 @@ export default function App() {
       if (changed) {
         // Save to local storage
         localStorage.setItem('missions_db_maria', JSON.stringify(updated));
-        
-        // Safe side effect scheduling
-        if (user) {
-          setTimeout(() => {
-            updated.forEach(m => {
-              if (m.status === 'completed' && m.id) {
-                uploadMission(user.uid, m).catch(e => console.error('Auto status sync failed:', e));
-              }
-            });
-          }, 0);
-        }
       }
       return updated;
     });
@@ -569,7 +558,7 @@ export default function App() {
   const [cloudUploadProgress, setCloudUploadProgress] = useState<{ current: number, total: number } | null>(null);
   const [isSyncingUser, setIsSyncingUser] = useState(false);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
-  const [currentDate, setCurrentDate] = useState<Date>(new Date(2026, 5, 6)); // Default June 2026
+  const [currentDate, setCurrentDate] = useState<Date>(() => new Date());
   const [user, setUser] = useState<User | null>(null);
   const [needsAuth, setNeedsAuth] = useState(false);
   const [authResolved, setAuthResolved] = useState(false);
@@ -583,7 +572,13 @@ export default function App() {
   const [manualError, setManualError] = useState('');
   
   // Mobile and view optimization states
-  const [selectedDay, setSelectedDay] = useState<string>('2026-06-06');
+  const [selectedDay, setSelectedDay] = useState<string>(() => {
+    const d = new Date();
+    const yr = d.getFullYear();
+    const mo = String(d.getMonth() + 1).padStart(2, '0');
+    const dy = String(d.getDate()).padStart(2, '0');
+    return `${yr}-${mo}-${dy}`;
+  });
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [currentMainSection, setCurrentMainSection] = useState<'personal' | 'retrospective' | 'catalog'>('personal');
   const [customMovementsVersion, setCustomMovementsVersion] = useState(0);
@@ -694,6 +689,95 @@ export default function App() {
         }
       });
     }
+
+    // Ensure Agência Aurora is registered as a custom movement
+    try {
+      const savedCustomStr = localStorage.getItem('saved_custom_catholic_movements');
+      const savedCustom = savedCustomStr ? JSON.parse(savedCustomStr) : {};
+      if (!savedCustom['Agência Aurora']) {
+        savedCustom['Agência Aurora'] = {
+          name: 'Agência Aurora',
+          fullName: 'Agência Aurora',
+          iconName: 'Sparkles',
+          colorClass: 'bg-indigo-600',
+          borderClass: 'border-indigo-400',
+          textClass: 'text-indigo-600',
+          gradientClass: 'from-indigo-600 to-violet-600',
+          bannerUrl: 'https://iili.io/CAkV6JI.jpg',
+          shortDesc: 'Marketing',
+          logoUrl: 'https://iili.io/CAkVrUN.jpg'
+        };
+        localStorage.setItem('saved_custom_catholic_movements', JSON.stringify(savedCustom));
+        
+        // Ensure colors are registered
+        const savedColorsStr = localStorage.getItem('catholic_movement_colors_maria');
+        const savedColors = savedColorsStr ? JSON.parse(savedColorsStr) : {};
+        savedColors['Agência Aurora'] = 'bg-indigo-600';
+        localStorage.setItem('catholic_movement_colors_maria', JSON.stringify(savedColors));
+
+        setTimeout(() => {
+          window.dispatchEvent(new Event('customMovementsChanged'));
+        }, 50);
+      }
+    } catch (err) {
+      console.error('Error seeding Agência Aurora custom movement:', err);
+    }
+
+    // Seed Agência Aurora completed missions if not already existing
+    const existingAuroraMissions = new Set(loadedMissions.map(m => m.id));
+    const auroraTasks = [
+      {
+        id: 'aurora-task-editorial',
+        title: 'Fiz calendário editorial',
+        startTime: '09:00',
+        endTime: '10:30',
+        description: 'Desenvolvimento do calendário editorial de postagens e campanhas da Agência Aurora.'
+      },
+      {
+        id: 'aurora-task-marcas',
+        title: 'Gerenciamento de marcas',
+        startTime: '11:00',
+        endTime: '12:30',
+        description: 'Supervisão, alinhamento de branding e acompanhamento das diretrizes das marcas.'
+      },
+      {
+        id: 'aurora-task-videos',
+        title: 'Edição de videos',
+        startTime: '14:00',
+        endTime: '16:00',
+        description: 'Edição, corte, tratamento de áudio e finalização de vídeos institucionais e promocionais.'
+      },
+      {
+        id: 'aurora-task-leads',
+        title: 'Respondi leads',
+        startTime: '16:30',
+        endTime: '18:00',
+        description: 'Triagem, atendimento e retorno de mensagens para potenciais clientes e parceiros.'
+      }
+    ];
+
+    auroraTasks.forEach(task => {
+      if (!existingAuroraMissions.has(task.id)) {
+        loadedMissions.push({
+          id: task.id,
+          title: task.title,
+          movement: 'Agência Aurora',
+          dateStr: '2026-06-26', // Current simulated system date
+          startTime: task.startTime,
+          endTime: task.endTime,
+          location: 'Agência Aurora HQ / Remoto',
+          description: task.description,
+          bannerUrl: 'https://iili.io/CAkV6JI.jpg',
+          movementLogoUrl: 'https://iili.io/CAkVrUN.jpg',
+          status: 'completed',
+          checklist: [],
+          roles: ['servir'],
+          observation: 'Tarefa concluída com sucesso para o departamento de Marketing da Agência Aurora.',
+          synced: false,
+          createdAt: new Date().toISOString()
+        });
+      }
+    });
 
     localStorage.setItem('missions_db_maria', JSON.stringify(loadedMissions));
     setMissions(loadedMissions);

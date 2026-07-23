@@ -103,6 +103,7 @@ export default function MissionModal({
   missions = [],
 }: MissionModalProps) {
   const [title, setTitle] = useState('');
+  const [isTitleEditedByUser, setIsTitleEditedByUser] = useState(false);
   const [movement, setMovement] = useState<string>(CatholicMovement.PAROQUIAL);
   const [useCustomMovement, setUseCustomMovement] = useState(false);
   const [customMovementName, setCustomMovementName] = useState('');
@@ -183,6 +184,7 @@ export default function MissionModal({
 
   // Load editing state or reset
   useEffect(() => {
+    setIsTitleEditedByUser(false);
     if (editMission) {
       setTitle(editMission.title || '');
       setDateStr(editMission.dateStr || '');
@@ -235,8 +237,17 @@ export default function MissionModal({
       setMovementLogoUrl('');
       setDateStr(initialDate || '');
       setEndDateStr('');
-      setStartTime('19:00');
-      setEndTime('20:30');
+      
+      // Check if Sunday date to default Sunday Mass time (17h as 18h30)
+      const isSunday = initialDate ? new Date(initialDate + 'T12:00:00').getDay() === 0 : false;
+      if (isSunday) {
+        setStartTime('17:00');
+        setEndTime('18:30');
+      } else {
+        setStartTime('19:00');
+        setEndTime('20:30');
+      }
+      
       setLocation('');
       setDescription('');
       setInstagramUrl('');
@@ -399,7 +410,7 @@ export default function MissionModal({
       setUseCustomMovement(false);
       setMovementLogoUrl('');
 
-      if (!editMission && val && !hasChanged) {
+      if (!editMission && val) {
         // Find last added event with this movement
         const lastEvent = [...missions]
           .filter((m) => m.movement === val)
@@ -411,7 +422,7 @@ export default function MissionModal({
           })[0];
 
         if (lastEvent) {
-          if (lastEvent.title) setTitle(lastEvent.title);
+          if (!isTitleEditedByUser && lastEvent.title) setTitle(lastEvent.title);
           if (lastEvent.location) setLocation(lastEvent.location);
           if (lastEvent.description) setDescription(lastEvent.description);
           if (lastEvent.instagramUrl) setInstagramUrl(lastEvent.instagramUrl);
@@ -430,7 +441,7 @@ export default function MissionModal({
 
   const handleTipoSelectChange = (val: string) => {
     setTipo(val);
-    if (!editMission && val && !hasChanged) {
+    if (!editMission && val) {
       // Find last added event with this tipo
       const lastEvent = [...missions]
         .filter((m) => m.tipo === val)
@@ -442,7 +453,7 @@ export default function MissionModal({
         })[0];
 
       if (lastEvent) {
-        if (lastEvent.title) setTitle(lastEvent.title);
+        if (!isTitleEditedByUser && lastEvent.title) setTitle(lastEvent.title);
         if (lastEvent.location) setLocation(lastEvent.location);
         if (lastEvent.description) setDescription(lastEvent.description);
         if (lastEvent.instagramUrl) setInstagramUrl(lastEvent.instagramUrl);
@@ -641,7 +652,10 @@ export default function MissionModal({
             <input
               type="text"
               value={title}
-              onChange={(e) => setTitle(e.target.value)}
+              onChange={(e) => {
+                setTitle(e.target.value);
+                setIsTitleEditedByUser(true);
+              }}
               placeholder="Ex: Noite de Avivamento Jovens, Terço Paroquial"
               className="w-full bg-white border border-purple-200 rounded-xl px-3 py-1.5 outline-none focus:border-purple-600 font-bold text-purple-900 text-xs"
             />
@@ -707,7 +721,7 @@ export default function MissionModal({
                           })[0];
 
                         if (lastEvent) {
-                          if (lastEvent.title) setTitle(lastEvent.title);
+                          if (!isTitleEditedByUser && lastEvent.title) setTitle(lastEvent.title);
                           if (lastEvent.location) setLocation(lastEvent.location);
                           if (lastEvent.description) setDescription(lastEvent.description);
                           if (lastEvent.instagramUrl) setInstagramUrl(lastEvent.instagramUrl);
