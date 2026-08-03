@@ -8,6 +8,7 @@ import { ChevronLeft, ChevronRight, Clock, MapPin, Sparkles, Bell, X, Instagram 
 import { motion } from 'motion/react';
 import { Mission } from '../types';
 import { getMovementStyle } from '../utils/catholicData';
+import ImagePreviewModal from './ImagePreviewModal';
 
 interface WarningCarouselProps {
   missions: Mission[];
@@ -24,6 +25,8 @@ export default function WarningCarousel({
 }: WarningCarouselProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selectedDetailMission, setSelectedDetailMission] = useState<Mission | null>(null);
+  const [previewImgUrl, setPreviewImgUrl] = useState<string | null>(null);
+  const [previewImgTitle, setPreviewImgTitle] = useState<string | undefined>();
   const [isHovered, setIsHovered] = useState(false);
   const [lastActivity, setLastActivity] = useState<number>(Date.now());
   const dragOffsetRef = useRef(0);
@@ -309,10 +312,14 @@ export default function WarningCarousel({
               
               {/* Header Image with Overlays */}
               <div 
-                className="h-[180px] sm:h-[220px] w-full bg-cover bg-center relative shrink-0"
-                style={{ backgroundImage: `url("${bgImage}")` }}
+                onClick={() => {
+                  setPreviewImgUrl(bgImage);
+                  setPreviewImgTitle(event.title);
+                }}
+                className="h-[180px] sm:h-[220px] w-full bg-cover bg-center relative shrink-0 cursor-pointer group/header"
+                title="Clique para ver a imagem em tamanho completo"
               >
-                <div className="absolute inset-0 bg-gradient-to-t from-purple-950 via-purple-900/50 to-transparent" />
+                <div className="absolute inset-0 bg-gradient-to-t from-purple-950 via-purple-900/50 to-transparent group-hover/header:via-purple-900/30 transition-colors" />
                 
                 {/* Close Button */}
                 <button
@@ -342,6 +349,9 @@ export default function WarningCarousel({
                         STATUS: {event.status.toUpperCase()}
                       </span>
                     )}
+                    <span className="text-[9px] font-extrabold bg-black/60 text-white px-2 py-0.5 rounded-full backdrop-blur-xs shadow-xs ml-auto flex items-center gap-1 group-hover/header:bg-purple-700 transition">
+                      🔍 Ampliar Imagem
+                    </span>
                   </div>
                   <h3 className="text-base sm:text-lg font-black text-white leading-tight drop-shadow-sm font-sans pt-1">
                     {event.title}
@@ -433,6 +443,13 @@ export default function WarningCarousel({
           </div>
         );
       })()}
+
+      {/* Fullscreen Lightbox Image Preview */}
+      <ImagePreviewModal
+        src={previewImgUrl}
+        title={previewImgTitle}
+        onClose={() => setPreviewImgUrl(null)}
+      />
     </div>
   );
 }

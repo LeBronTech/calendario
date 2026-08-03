@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { Mission, CatholicMovement, DailyTimeConfig, RecurrenceConfig } from '../types';
 import { getMovementStyle, isMissionOnDate, getEffectiveEndDate, getSortedMovements, getAllMovements } from '../utils/catholicData';
+import ImagePreviewModal from './ImagePreviewModal';
 
 interface DayActivityModalProps {
   isOpen: boolean;
@@ -368,6 +369,10 @@ export default function DayActivityModal({
   const [recurrenceEndDate, setRecurrenceEndDate] = useState('');
   const [customDates, setCustomDates] = useState<string[]>([]);
   const [newCustomDate, setNewCustomDate] = useState('');
+
+  // Image Fullscreen Preview State
+  const [previewImgUrl, setPreviewImgUrl] = useState<string | null>(null);
+  const [previewImgTitle, setPreviewImgTitle] = useState<string | undefined>();
 
   // Reset active card index when selectedDay changes
   useEffect(() => {
@@ -1839,12 +1844,50 @@ export default function DayActivityModal({
 
                       {/* Banner image or Instagram embed */}
                       {m.instagramImgUrl ? (
-                        <div className="w-full h-32 relative rounded-xl overflow-hidden bg-purple-955 border border-purple-150 shrink-0">
-                          <img src={m.instagramImgUrl} alt="Mídia do Post" className="w-full h-full object-cover" />
-                          <div className="absolute inset-0 bg-gradient-to-t from-purple-950/70 to-transparent" />
-                          <div className="absolute bottom-2 left-3">
-                            <span className="text-[9px] uppercase font-black tracking-widest bg-purple-700 text-white px-2 py-0.5 rounded">
-                              Imagem Associada
+                        <div 
+                          onClick={() => {
+                            setPreviewImgUrl(m.instagramImgUrl!);
+                            setPreviewImgTitle(m.title);
+                          }}
+                          className="w-full h-36 sm:h-48 relative rounded-xl overflow-hidden bg-purple-950 border border-purple-150 shrink-0 cursor-pointer group/img"
+                          title="Clique para abrir imagem em tamanho completo"
+                        >
+                          <img 
+                            src={m.instagramImgUrl} 
+                            alt="Mídia do Post" 
+                            className="w-full h-full object-cover group-hover/img:scale-105 transition-transform duration-300" 
+                          />
+                          <div className="absolute inset-0 bg-gradient-to-t from-purple-950/80 via-transparent to-transparent opacity-80 group-hover/img:opacity-100 transition-opacity" />
+                          <div className="absolute bottom-2.5 left-3 right-3 flex items-center justify-between">
+                            <span className="text-[9px] uppercase font-black tracking-widest bg-purple-700 text-white px-2 py-0.5 rounded shadow-xs">
+                              Imagem do Evento
+                            </span>
+                            <span className="text-[10px] font-extrabold bg-black/65 text-white px-2.5 py-1 rounded-full backdrop-blur-xs flex items-center gap-1 shadow-md group-hover/img:bg-purple-700 transition">
+                              🔍 Ampliar Imagem
+                            </span>
+                          </div>
+                        </div>
+                      ) : m.bannerUrl ? (
+                        <div 
+                          onClick={() => {
+                            setPreviewImgUrl(m.bannerUrl!);
+                            setPreviewImgTitle(m.title);
+                          }}
+                          className="w-full h-36 sm:h-44 relative rounded-xl overflow-hidden bg-purple-950 border border-purple-150 shrink-0 cursor-pointer group/img"
+                          title="Clique para abrir imagem em tamanho completo"
+                        >
+                          <img 
+                            src={m.bannerUrl} 
+                            alt="Banner do Evento" 
+                            className="w-full h-full object-cover group-hover/img:scale-105 transition-transform duration-300" 
+                          />
+                          <div className="absolute inset-0 bg-gradient-to-t from-purple-950/80 via-transparent to-transparent opacity-80 group-hover/img:opacity-100 transition-opacity" />
+                          <div className="absolute bottom-2.5 left-3 right-3 flex items-center justify-between">
+                            <span className="text-[9px] uppercase font-black tracking-widest bg-purple-700 text-white px-2 py-0.5 rounded shadow-xs">
+                              Banner do Evento
+                            </span>
+                            <span className="text-[10px] font-extrabold bg-black/65 text-white px-2.5 py-1 rounded-full backdrop-blur-xs flex items-center gap-1 shadow-md group-hover/img:bg-purple-700 transition">
+                              🔍 Ampliar Imagem
                             </span>
                           </div>
                         </div>
@@ -2137,6 +2180,13 @@ export default function DayActivityModal({
           </div>
         </div>
       )}
+
+      {/* Fullscreen Image Lightbox Preview */}
+      <ImagePreviewModal
+        src={previewImgUrl}
+        title={previewImgTitle}
+        onClose={() => setPreviewImgUrl(null)}
+      />
     </div>
   );
 }

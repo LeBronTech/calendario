@@ -7,6 +7,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Calendar, MapPin, Clock, Save, Bookmark, Instagram, Upload, Trash2, Tag } from 'lucide-react';
 import { Mission, CatholicMovement, DailyTimeConfig, RecurrenceConfig } from '../types';
 import { getMovementStyle, getSortedMovements, getAllMovements } from '../utils/catholicData';
+import ImagePreviewModal from './ImagePreviewModal';
 
 interface MissionModalProps {
   isOpen: boolean;
@@ -124,6 +125,10 @@ export default function MissionModal({
   const [observation, setObservation] = useState('');
   const [status, setStatus] = useState<Mission['status']>('preparing');
   const [dailySchedules, setDailySchedules] = useState<DailyTimeConfig[]>([]);
+
+  // Preview Image state
+  const [previewImgUrl, setPreviewImgUrl] = useState<string | null>(null);
+  const [previewImgTitle, setPreviewImgTitle] = useState<string | undefined>();
 
   // Recurrence states
   const [recurrenceFreq, setRecurrenceFreq] = useState<RecurrenceConfig['frequency']>('none');
@@ -625,19 +630,36 @@ export default function MissionModal({
 
         {/* Instantly displayed image at the top of the modal body */}
         {instagramImgUrl && (
-          <div className="w-full h-32 md:h-40 relative overflow-hidden bg-purple-950 border-b border-purple-150 shrink-0">
-            <img src={instagramImgUrl} alt="Mídia do Instagram" className="w-full h-full object-cover" />
+          <div 
+            onClick={() => {
+              setPreviewImgUrl(instagramImgUrl);
+              setPreviewImgTitle(title || 'Banner do Evento');
+            }}
+            className="w-full h-32 md:h-44 relative overflow-hidden bg-purple-950 border-b border-purple-150 shrink-0 cursor-pointer group/img"
+            title="Clique para ver imagem completa em tela cheia"
+          >
+            <img 
+              src={instagramImgUrl} 
+              alt="Mídia do Instagram" 
+              className="w-full h-full object-cover group-hover/img:scale-105 transition-transform duration-300" 
+            />
             <div className="absolute inset-0 bg-gradient-to-t from-purple-950/85 via-black/10 to-transparent" />
             <button
               type="button"
-              onClick={() => setInstagramImgUrl('')}
-              className="absolute top-2 right-2 px-2 py-0.5 rounded bg-black/60 hover:bg-red-650 text-white text-[9px] font-black uppercase tracking-wider flex items-center gap-1 transition"
+              onClick={(e) => {
+                e.stopPropagation();
+                setInstagramImgUrl('');
+              }}
+              className="absolute top-2 right-2 px-2 py-0.5 rounded bg-black/60 hover:bg-red-650 text-white text-[9px] font-black uppercase tracking-wider flex items-center gap-1 transition z-10"
             >
               <Trash2 className="w-3 h-3" /> Excluir Banner
             </button>
-            <div className="absolute bottom-2.5 left-4">
-              <span className="text-[10px] uppercase font-black tracking-widest bg-purple-700 text-white px-2 py-1 rounded-md">
+            <div className="absolute bottom-2.5 left-4 right-4 flex items-center justify-between">
+              <span className="text-[10px] uppercase font-black tracking-widest bg-purple-700 text-white px-2 py-1 rounded-md shadow-xs">
                 Card Digital / Mídia do Post
+              </span>
+              <span className="text-[10px] font-extrabold bg-black/65 text-white px-2.5 py-1 rounded-full backdrop-blur-xs flex items-center gap-1 shadow-md group-hover/img:bg-purple-700 transition">
+                🔍 Ampliar Imagem
               </span>
             </div>
           </div>
@@ -1231,6 +1253,13 @@ export default function MissionModal({
         </div>
 
       </div>
+
+      {/* Fullscreen Image Lightbox Preview */}
+      <ImagePreviewModal
+        src={previewImgUrl}
+        title={previewImgTitle}
+        onClose={() => setPreviewImgUrl(null)}
+      />
     </div>
   );
 }

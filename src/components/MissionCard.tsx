@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { Mission, CatholicMovement, ChecklistItem } from '../types';
 import { MOVEMENT_DATA, getMovementStyle } from '../utils/catholicData';
+import ImagePreviewModal from './ImagePreviewModal';
 
 interface MissionCardProps {
   key?: string | number;
@@ -40,6 +41,7 @@ export default function MissionCard({
   const [isExpanded, setIsExpanded] = useState(false);
   const [newCheckItem, setNewCheckItem] = useState('');
   const [timeLeft, setTimeLeft] = useState<{ days: number; hours: number; minutes: number; seconds: number } | null>(null);
+  const [previewImgUrl, setPreviewImgUrl] = useState<string | null>(null);
 
   const style = getMovementStyle(mission.movement);
 
@@ -165,20 +167,29 @@ export default function MissionCard({
     >
       {/* Expanded Banner */}
       {isExpanded && style && (
-        <div className="relative h-44 w-full bg-slate-900 text-white overflow-hidden">
+        <div 
+          onClick={() => setPreviewImgUrl(mission.bannerUrl || style.bannerUrl || null)}
+          className="relative h-44 w-full bg-slate-900 text-white overflow-hidden cursor-pointer group/banner"
+          title="Clique para expandir a imagem em tela cheia"
+        >
           <img
             src={mission.bannerUrl || style.bannerUrl}
             alt={mission.title}
-            className="absolute inset-0 w-full h-full object-cover opacity-60 filter saturate-[0.8]"
+            className="absolute inset-0 w-full h-full object-cover opacity-60 filter saturate-[0.8] group-hover/banner:scale-105 transition-transform duration-300"
           />
           <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/40 to-transparent" />
-          <div className="absolute bottom-4 left-4 right-4">
-            <span className={`text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded text-white ${mission.cardColor || style?.colorClass || 'bg-purple-600'} shadow-md`}>
-              {style.fullName}
+          <div className="absolute bottom-4 left-4 right-4 flex items-end justify-between">
+            <div>
+              <span className={`text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded text-white ${mission.cardColor || style?.colorClass || 'bg-purple-600'} shadow-md`}>
+                {style.fullName}
+              </span>
+              <h3 className="text-xl font-black mt-2 tracking-tight text-white drop-shadow-md">
+                {mission.title}
+              </h3>
+            </div>
+            <span className="text-[10px] font-extrabold bg-black/60 text-white px-2.5 py-1 rounded-full backdrop-blur-xs opacity-0 group-hover/banner:opacity-100 transition-opacity flex items-center gap-1 shadow-md">
+              🔍 Ampliar Imagem
             </span>
-            <h3 className="text-xl font-black mt-2 tracking-tight text-white drop-shadow-md">
-              {mission.title}
-            </h3>
           </div>
         </div>
       )}
@@ -434,6 +445,12 @@ export default function MissionCard({
           </button>
         </div>
       </div>
+
+      <ImagePreviewModal
+        src={previewImgUrl}
+        title={mission.title}
+        onClose={() => setPreviewImgUrl(null)}
+      />
     </div>
   );
 }
